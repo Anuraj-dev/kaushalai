@@ -1,0 +1,2 @@
+import Link from "next/link";
+export default function AdminLayout({ children }: Readonly<{ children: React.ReactNode }>) { return <div className="admin-shell"><header className="admin-header"><Link href="/admin">Kaushal AI administration</Link><nav aria-label="Administrator"><Link href="/admin">Matrices</Link><Link href="/admin/officials">Officials</Link><Link href="/admin/analytics">Analytics</Link></nav></header><main>{children}</main></div>; }
