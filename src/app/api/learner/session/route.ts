@@ -1,0 +1,260 @@
+import { randomUUID } from "node:crypto";
+
+import {
+  createAiAssessmentService,
+  createConfiguredProviderAdapters,
+  type GeneratedQuestion,
+} from "@/ai";
+import { repositories } from "@/data";
+import { getDatabase, type KaushalDatabase } from "@/db/client";
+import { EVIDENCE_RELIABILITY, scoreAssessment, type AssessmentResult, type CompetencyRequirement, type Evidence } from "@/domain/assessment";
+import { LearningService } from "@/services/learning-service";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+type Row = Record<string, unknown>;
+type Answer = { questionId: string; value: string };
+type StoredQuestion = {
+  id: string;
+  competencyId: string;
+  competencyName: string;
+  format: "single_choice" | "short_text";
+  prompt: string;
+  options: Array<{ id: string; text: string; demonstratedLevel: number }>;
+  rubric: Array<{ level: number; criterion: string }>;
+};
+type RoundPayload = { kind: "baseline" | "personalized" | "clarification"; questions: StoredQuestion[] };
+type PublicQuestion = Omit<StoredQuestion, "rubric" | "options"> & { options: Array<{ id: string; text: string }> };
+
+const parse = <T>(value: unknown, fallback: T): T => {
+  try { return value ? JSON.parse(String(value)) as T : fallback; } catch { return fallback; }
+};
+
+const database = () => getDatabase();
+const fail = (message: string, status = 400) => Response.json({ error: message }, { status });
+const publicQuestions = (questions: StoredQuestion[]): PublicQuestion[] => questions.map((question) => ({ id: question.id, competencyId: question.competencyId, competencyName: question.competencyName, format: question.format, prompt: question.prompt, options: question.options.map(({ id, text }) => ({ id, text })) }));
+
+function requirements(db: KaushalDatabase, versionId: string): CompetencyRequirement[] {
+  return (db.prepare(`SELECT mc.competency_id,c.name,mc.required_level,mc.importance
+    FROM matrix_competencies mc JOIN competencies c ON c.id=mc.competency_id
+    WHERE mc.matrix_version_id=? ORDER BY mc.importance DESC,c.name`).all(versionId) as Row[]).map((row) => ({
+    competencyId: String(row.competency_id), name: String(row.name),
+    requiredLevel: Number(row.required_level), importance: Number(row.importance),
+  }));
+}
+
+function rubrics(db: KaushalDatabase, competencyIds: string[]) {
+  const result = new Map<string, Array<{ level: number; criterion: string }>>();
+  for (const competencyId of competencyIds) {
+    const entries = (db.prepare("SELECT level,descriptor FROM competency_rubrics WHERE competency_id=? ORDER BY level").all(competencyId) as Row[])
+      .map((row) => ({ level: Number(row.level), criterion: String(row.descriptor) }));
+    result.set(competencyId, entries);
+  }
+  return result;
+}
+
+function baselineQuestions(db: KaushalDatabase, matrix: CompetencyRequirement[]): StoredQuestion[] {
+  return matrix.map((requirement) => {
+    const row = db.prepare("SELECT id,prompt,options_json FROM questions WHERE competency_id=? AND kind IN ('baseline_single_choice','baseline') AND active=1 ORDER BY id LIMIT 1").get(requirement.competencyId) as Row | undefined;
+    if (!row) throw new Error(`Baseline question missing for ${requirement.competencyId}`);
+    const options = parse<Array<{ label: string; demonstratedLevel: number }>>(row.options_json, []);
+    return {
+      id: String(row.id), competencyId: requirement.competencyId, competencyName: requirement.name,
+      format: "single_choice", prompt: String(row.prompt), rubric: [],
+      options: options.map((option, index) => ({ id: `${String(row.id)}-o${index + 1}`, text: option.label, demonstratedLevel: option.demonstratedLevel })),
+    };
+  });
+}
+
+function fallbackQuestions(db: KaushalDatabase, matrix: CompetencyRequirement[], count: number, round: 2 | 3): GeneratedQuestion[] {
+  const rubricMap = rubrics(db, matrix.map((item) => item.competencyId));
+  return Array.from({ length: count }, (_, index) => {
+    const requirement = matrix[index % matrix.length]!;
+    const rows = db.prepare("SELECT prompt FROM questions WHERE competency_id=? AND kind='adaptive_fallback' AND active=1 ORDER BY id").all(requirement.competencyId) as Row[];
+    const prompt = String(rows[Math.floor(index / matrix.length) % Math.max(rows.length, 1)]?.prompt ?? `Describe how you apply ${requirement.name}.`);
+    return {
+      id: `assessment-r${round}-${index + 1}-${requirement.competencyId}`,
+      competencyId: requirement.competencyId, format: "short_text", prompt,
+      targetLevel: requirement.requiredLevel, selectionReason: "Clarify evidence against the pinned matrix.",
+      options: [], rubric: rubricMap.get(requirement.competencyId) ?? [],
+    };
+  });
+}
+
+function toStored(generated: GeneratedQuestion[], matrix: CompetencyRequirement[]): StoredQuestion[] {
+  const names = new Map(matrix.map((item) => [item.competencyId, item.name]));
+  return generated.map((item) => ({
+    id: item.id, competencyId: item.competencyId, competencyName: names.get(item.competencyId) ?? "Competency",
+    format: item.format, prompt: item.prompt, options: item.options.map((option) => ({ id: option.id, text: option.text, demonstratedLevel: option.demonstratedLevel })), rubric: item.rubric,
+  }));
+}
+
+function aiService() {
+  const adapters = createConfiguredProviderAdapters();
+  return createAiAssessmentService({ ...adapters, logger: (event) => console.warn(JSON.stringify(event)) });
+}
+
+async function createAdaptiveRound(db: KaushalDatabase, assessmentId: string, versionId: string, round: 2 | 3, matrix: CompetencyRequirement[]) {
+  const count = round === 2 ? Math.min(10, Math.max(7, matrix.length)) : Math.min(5, matrix.length);
+  const fallback = fallbackQuestions(db, matrix, count, round);
+  const priorEvidence = (db.prepare("SELECT competency_id,rationale FROM evidence WHERE assessment_id=? ORDER BY created_at").all(assessmentId) as Row[])
+    .map((row) => ({ competencyId: String(row.competency_id), summary: String(row.rationale ?? "Assessment response") }));
+  const rubricMap = rubrics(db, matrix.map((item) => item.competencyId));
+  const generated = await aiService().generateAdaptiveQuestions({
+    assessmentSessionId: assessmentId, matrixVersionId: versionId, requestedCount: count,
+    competencies: matrix.map((item) => ({ id: item.competencyId, targetLevel: item.requiredLevel, rubric: rubricMap.get(item.competencyId) ?? [] })),
+    priorEvidence, fallbackQuestions: fallback,
+  });
+  const payload: RoundPayload = { kind: round === 2 ? "personalized" : "clarification", questions: toStored(generated.data.questions, matrix) };
+  db.prepare("INSERT INTO assessment_rounds(id,assessment_id,round_number,kind,status) VALUES (?,?,?,?, 'pending')")
+    .run(randomUUID(), assessmentId, round, JSON.stringify(payload));
+}
+
+function assessmentEvidence(db: KaushalDatabase, assessmentId: string): Evidence[] {
+  const assessment = db.prepare("SELECT official_id FROM assessments WHERE id=?").get(assessmentId) as Row | undefined;
+  const current = (db.prepare("SELECT * FROM evidence WHERE assessment_id=? ORDER BY created_at,id").all(assessmentId) as Row[]).map((row) => ({
+    id: String(row.id), competencyId: String(row.competency_id), source: String(row.source_type) as Evidence["source"],
+    demonstratedLevel: Number(row.level), reliability: Number(row.reliability), reason: String(row.rationale ?? "Assessment response"),
+    round: Number(String(row.id).match(/:r([123]):/)?.[1] ?? 1) as 1 | 2 | 3,
+  }));
+  if (!assessment) return current;
+  const history = (db.prepare("SELECT id,competency_id,source_type,level,reliability FROM learning_history WHERE official_id=? ORDER BY recorded_at,id").all(assessment.official_id) as Row[]).map((row) => ({
+    id: `history:${String(row.id)}`, competencyId: String(row.competency_id), source: String(row.source_type) as Evidence["source"],
+    demonstratedLevel: Number(row.level), reliability: Number(row.reliability), reason: "Prior verified learning history", round: null,
+  }));
+  return [...current, ...history];
+}
+
+function persistResults(db: KaushalDatabase, assessmentId: string, result: AssessmentResult) {
+  db.prepare("DELETE FROM assessment_results WHERE assessment_id=?").run(assessmentId);
+  const insert = db.prepare(`INSERT INTO assessment_results(id,assessment_id,competency_id,assessed_level,required_level,gap,priority,confidence,supported)
+    VALUES (?,?,?,?,?,?,?,?,?)`);
+  for (const item of result.competencies) insert.run(randomUUID(), assessmentId, item.competencyId, item.assessedLevel, item.requiredLevel, item.gap, item.priority, item.confidence, item.supported ? 1 : 0);
+}
+
+function session(db: KaushalDatabase, assessmentId: string) {
+  const assessment = db.prepare(`SELECT a.*,v.version,m.job_role_id FROM assessments a JOIN matrix_versions v ON v.id=a.matrix_version_id
+    JOIN competency_matrices m ON m.id=v.matrix_id WHERE a.id=?`).get(assessmentId) as Row | undefined;
+  if (!assessment) return null;
+  const official = db.prepare("SELECT o.*,r.name job_role_name FROM officials o JOIN job_roles r ON r.id=o.job_role_id WHERE o.id=?").get(assessment.official_id) as Row;
+  const matrix = requirements(db, String(assessment.matrix_version_id));
+  const pending = db.prepare("SELECT * FROM assessment_rounds WHERE assessment_id=? AND status='pending' ORDER BY round_number LIMIT 1").get(assessmentId) as Row | undefined;
+  const payload = pending ? parse<RoundPayload>(pending.kind, { kind: "baseline", questions: [] }) : null;
+  const results = (db.prepare(`SELECT r.*,c.name FROM assessment_results r JOIN competencies c ON c.id=r.competency_id
+    WHERE r.assessment_id=? ORDER BY r.priority DESC,c.name`).all(assessmentId) as Row[]).map((row) => ({
+    competencyId: String(row.competency_id), competencyName: String(row.name), assessedLevel: Number(row.assessed_level),
+    requiredLevel: Number(row.required_level), gap: Number(row.gap), priority: Number(row.priority), confidence: Number(row.confidence), supported: row.supported === 1,
+    evidence: (db.prepare("SELECT rationale,source_type,reliability FROM evidence WHERE assessment_id=? AND competency_id=? ORDER BY created_at").all(assessmentId, row.competency_id) as Row[])
+      .map((entry) => ({ reason: String(entry.rationale ?? "Assessment response"), source: String(entry.source_type), reliability: Number(entry.reliability) })),
+  }));
+  const history = (db.prepare(`SELECT h.*,c.name competency_name,co.title course_title FROM learning_history h JOIN competencies c ON c.id=h.competency_id
+    LEFT JOIN course_completions cc ON cc.id=h.source_id LEFT JOIN courses co ON co.id=cc.course_id WHERE h.official_id=? ORDER BY h.recorded_at DESC`).all(assessment.official_id) as Row[]).map((row) => ({
+    id: String(row.id), competencyName: String(row.competency_name), source: String(row.source_type), level: Number(row.level), reliability: Number(row.reliability), recordedAt: String(row.recorded_at), courseTitle: row.course_title ? String(row.course_title) : null,
+  }));
+  const recommendations = new LearningService(db).getPath(assessmentId) as Row[];
+  const invitations = db.prepare("SELECT * FROM reassessment_invitations WHERE official_id=? AND accepted_at IS NULL ORDER BY created_at DESC").all(assessment.official_id) as Row[];
+  const matrixReassessment = (db.prepare(`SELECT EXISTS(
+    SELECT 1 FROM matrix_versions newer JOIN competency_matrices cm ON cm.id=newer.matrix_id
+    JOIN officials o ON o.job_role_id=cm.job_role_id
+    WHERE o.id=? AND newer.status='published' AND newer.version>?
+  ) eligible`).get(assessment.official_id, Number(assessment.version)) as { eligible: number }).eligible === 1;
+  const completedCourses = Number((db.prepare("SELECT COUNT(*) count FROM course_completions WHERE official_id=?").get(assessment.official_id) as Row).count);
+  return {
+    official: { id: String(official.id), name: String(official.name), employeeCode: String(official.employee_code), email: String(official.email), jobRoleId: String(official.job_role_id), jobRoleName: String(official.job_role_name) },
+    matrix: { versionId: String(assessment.matrix_version_id), version: Number(assessment.version), competencies: matrix },
+    history,
+    assessment: { id: assessmentId, status: String(assessment.status), startedAt: String(assessment.started_at), currentRound: pending ? Number(pending.round_number) : null, roundKind: payload?.kind ?? null, questions: publicQuestions(payload?.questions ?? []), provisional: String(assessment.status) === "provisional" },
+    results,
+    recommendations: recommendations.map((row) => ({ id: String(row.id), courseId: String(row.course_id), competencyId: String(row.competency_id), title: String(row.title), provider: row.provider ? String(row.provider) : null, duration: row.duration ? String(row.duration) : null, level: row.level ? String(row.level) : null, rank: Number(row.rank), rationale: String(row.rationale) })),
+    reassessmentInvited: invitations.length > 0 || matrixReassessment,
+    dashboard: { supportedCompetencies: results.filter((item) => item.supported).length, totalCompetencies: matrix.length, openGaps: results.filter((item) => item.gap > 0).length, completedCourses },
+  };
+}
+
+async function submitRound(db: KaushalDatabase, assessmentId: string, answers: Answer[]) {
+  const assessment = db.prepare("SELECT * FROM assessments WHERE id=? AND status='active'").get(assessmentId) as Row | undefined;
+  if (!assessment) throw new Error("Active assessment not found");
+  const round = db.prepare("SELECT * FROM assessment_rounds WHERE assessment_id=? AND status='pending' ORDER BY round_number LIMIT 1").get(assessmentId) as Row | undefined;
+  if (!round) throw new Error("No assessment round is awaiting answers");
+  const payload = parse<RoundPayload>(round.kind, { kind: "baseline", questions: [] });
+  if (answers.length !== payload.questions.length || new Set(answers.map((item) => item.questionId)).size !== answers.length) throw new Error("Answer every question once before submitting");
+  const answerMap = new Map(answers.map((item) => [item.questionId, item.value.trim()]));
+  if (payload.questions.some((question) => !answerMap.has(question.id) || !answerMap.get(question.id))) throw new Error("Answer every question once before submitting");
+  const roundNumber = Number(round.round_number) as 1 | 2 | 3;
+  let evaluated = new Map<string, { level: number; reliability: number; reason: string }>();
+  if (roundNumber === 1) {
+    evaluated = new Map(payload.questions.map((question) => {
+      const option = question.options.find((item) => item.id === answerMap.get(question.id));
+      if (!option) throw new Error("A baseline answer is not one of the stored choices");
+      return [question.id, { level: option.demonstratedLevel, reliability: EVIDENCE_RELIABILITY["fixed-assessment"], reason: `Selected: ${option.text}` }];
+    }));
+  } else {
+    const result = await aiService().evaluateWrittenAnswers({
+      assessmentSessionId: assessmentId, matrixVersionId: String(assessment.matrix_version_id),
+      answers: payload.questions.map((question) => ({ questionId: question.id, competencyId: question.competencyId, answer: answerMap.get(question.id)!, rubric: question.rubric, fallbackDemonstratedLevel: 2 })),
+    });
+    evaluated = new Map(result.data.evaluations.map((item) => [item.questionId, { level: item.demonstratedLevel, reliability: Math.min(0.8, Math.max(0.1, item.confidence || 0.6)), reason: item.evidenceSummary }]));
+  }
+  db.transaction(() => {
+    const response = db.prepare("INSERT INTO responses(id,round_id,question_id,prompt_snapshot,response_json) VALUES (?,?,?,?,?)");
+    const insertEvidence = db.prepare("INSERT INTO evidence(id,assessment_id,competency_id,source_type,level,reliability,rationale) VALUES (?,?,?,?,?,?,?)");
+    for (const question of payload.questions) {
+      response.run(randomUUID(), round.id, roundNumber === 1 ? question.id : null, question.prompt, JSON.stringify({ value: answerMap.get(question.id) }));
+      const item = evaluated.get(question.id)!;
+      insertEvidence.run(`${randomUUID()}:r${roundNumber}:${question.id}`, assessmentId, question.competencyId, roundNumber === 1 ? "fixed-assessment" : "ai-written", item.level, item.reliability, item.reason);
+    }
+    db.prepare("UPDATE assessment_rounds SET status='completed',updated_at=CURRENT_TIMESTAMP WHERE id=?").run(round.id);
+  })();
+  const matrix = requirements(db, String(assessment.matrix_version_id));
+  const scored = scoreAssessment(matrix, assessmentEvidence(db, assessmentId));
+  if (!scored.ok) throw new Error(scored.error.message);
+  db.transaction(() => persistResults(db, assessmentId, scored.value))();
+  if (roundNumber === 1) await createAdaptiveRound(db, assessmentId, String(assessment.matrix_version_id), 2, matrix);
+  else if (roundNumber === 2 && scored.value.round3Required) await createAdaptiveRound(db, assessmentId, String(assessment.matrix_version_id), 3, matrix);
+  else {
+    db.prepare("UPDATE assessments SET status=?,completed_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE id=?").run(roundNumber === 3 && scored.value.round3Required ? "provisional" : "completed", assessmentId);
+    new LearningService(db).createPath(assessmentId);
+  }
+}
+
+export async function GET(request: Request) {
+  const query = new URL(request.url).searchParams;
+  const db = database();
+  let assessmentId = query.get("assessmentId");
+  if (!assessmentId && query.get("officialId")) assessmentId = (await repositories(db).assessments.latestForOfficial(query.get("officialId")!))?.id ?? null;
+  if (!assessmentId) return fail("No assessment found", 404);
+  const value = session(db, assessmentId);
+  return value ? Response.json(value) : fail("Assessment not found", 404);
+}
+
+export async function POST(request: Request) {
+  try {
+    const body = await request.json() as { action?: string; officialId?: string; assessmentId?: string; answers?: Answer[]; courseId?: string; competencyId?: string };
+    const db = database();
+    if (body.action === "start" || body.action === "reassess") {
+      if (!body.officialId) return fail("officialId is required");
+      if (body.action === "reassess") {
+        db.prepare("UPDATE reassessment_invitations SET accepted_at=CURRENT_TIMESTAMP WHERE official_id=? AND accepted_at IS NULL").run(body.officialId);
+      }
+      const started = await repositories(db).assessments.start(body.officialId);
+      const matrix = requirements(db, started.matrixVersionId);
+      const payload: RoundPayload = { kind: "baseline", questions: baselineQuestions(db, matrix) };
+      db.prepare("INSERT INTO assessment_rounds(id,assessment_id,round_number,kind,status) VALUES (?,?,1,?,'pending')").run(randomUUID(), started.id, JSON.stringify(payload));
+      return Response.json(session(db, started.id), { status: 201 });
+    }
+    if (body.action === "submit-round") {
+      if (!body.assessmentId) return fail("assessmentId is required");
+      await submitRound(db, body.assessmentId, body.answers ?? []);
+      return Response.json(session(db, body.assessmentId));
+    }
+    if (body.action === "complete-course") {
+      if (!body.officialId || !body.courseId || !body.competencyId || !body.assessmentId) return fail("Completion identifiers are required");
+      new LearningService(db).completeCourse({ officialId: body.officialId, courseId: body.courseId, competencyId: body.competencyId });
+      return Response.json(session(db, body.assessmentId), { status: 201 });
+    }
+    return fail("Unknown learner action");
+  } catch (error) {
+    return fail(error instanceof Error ? error.message : "Unable to update learner session");
+  }
+}
