@@ -4,6 +4,7 @@ out/
 coverage/
 playwright-report/
 test-results/
+.impeccable/
 *.db
 *.db-shm
 *.db-wal
