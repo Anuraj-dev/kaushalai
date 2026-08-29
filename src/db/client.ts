@@ -5,7 +5,8 @@ import { dirname, resolve } from "node:path";
 export type KaushalDatabase = Database.Database;
 
 export function databasePath(): string {
-  return resolve(process.env.DATABASE_URL ?? "data/kaushal-ai.db");
+  const configured = process.env.DATABASE_URL ?? "data/kaushal-ai.db";
+  return resolve(configured.startsWith("file:") ? configured.slice("file:".length) : configured);
 }
 
 export function openDatabase(path = databasePath()): KaushalDatabase {

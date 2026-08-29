@@ -14,7 +14,6 @@ const domain: Record<CompetencyName, string> = {
   Ethics: "behavioural_managerial", "Project Management": "behavioural_managerial", Leadership: "behavioural_managerial", Communication: "behavioural_managerial", "Change Management": "behavioural_managerial",
 };
 const tags: Record<CompetencyName, string[]> = Object.fromEntries(competencyNames.map((name) => [name, [name === "Basic Statistics" ? "statistics" : name.toLowerCase()]])) as Record<CompetencyName, string[]>;
-tags.Python.push("r programming");
 tags.AI.push("machine learning");
 tags["Cloud Computing"].push("government cloud");
 

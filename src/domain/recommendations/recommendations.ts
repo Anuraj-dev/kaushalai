@@ -7,7 +7,7 @@ function evidenceScore(course: CatalogCourse, tags: string[]): number {
   const normalizedTitle = normalize(course.title);
   const specialistFalsePositive = tags.some((tag) => {
     const normalizedTag = normalize(tag);
-    if (normalizedTag === "sampling") return /\b(soil|water|air|mineral|geological|legal)\b/.test(normalizedTitle);
+    if (normalizedTag === "sampling") return /\b(soil|water|air|mineral|geological|legal|borehole|base metal|ndps|environmental|exploration)\b/.test(normalizedTitle);
     if (normalizedTag === "national accounts") return /\b(company|financial|pension|postal|partnership)\b/.test(normalizedTitle);
     return false;
   });
