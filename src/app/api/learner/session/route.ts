@@ -211,7 +211,17 @@ async function submitRound(db: KaushalDatabase, assessmentId: string, answers: A
   if (!scored.ok) throw new Error(scored.error.message);
   db.transaction(() => persistResults(db, assessmentId, scored.value))();
   if (roundNumber === 1) await createAdaptiveRound(db, assessmentId, String(assessment.matrix_version_id), 2, matrix);
-  else if (roundNumber === 2 && scored.value.round3Required) await createAdaptiveRound(db, assessmentId, String(assessment.matrix_version_id), 3, matrix);
+  else if (roundNumber === 2 && scored.value.round3Required) {
+    const unresolved = scored.value.competencies
+      .filter((item) => !item.supported || item.contradictory)
+      .sort((a, b) => b.priority - a.priority)
+      .map((item) => item.competencyId);
+    const unresolvedRank = new Map(unresolved.map((competencyId, index) => [competencyId, index]));
+    const round3Matrix = matrix
+      .filter((item) => unresolvedRank.has(item.competencyId))
+      .sort((a, b) => unresolvedRank.get(a.competencyId)! - unresolvedRank.get(b.competencyId)!);
+    await createAdaptiveRound(db, assessmentId, String(assessment.matrix_version_id), 3, round3Matrix.length > 0 ? round3Matrix : matrix);
+  }
   else {
     db.prepare("UPDATE assessments SET status=?,completed_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE id=?").run(roundNumber === 3 && scored.value.round3Required ? "provisional" : "completed", assessmentId);
     new LearningService(db).createPath(assessmentId);
