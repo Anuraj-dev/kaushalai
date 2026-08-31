@@ -1,12 +1,13 @@
 import Image from "next/image";
 import Link from "next/link";
+import { Button } from "@/components/ui/button";
 
 export default function Home() {
   return <main id="main-content" className="landing">
     <section className="landing-hero" aria-labelledby="landing-title">
       <h1 id="landing-title">Find what to learn to meet your role</h1>
       <p className="landing-lede">Kaushal AI turns demonstrated competency evidence into a clear, explainable learning path for public officials.</p>
-      <div className="landing-actions"><Link className="button button-primary" href="/learner">Open official workspace <span aria-hidden="true">→</span></Link><Link className="button button-secondary" href="/admin">View administrator workspace</Link></div>
+      <div className="landing-actions"><Button asChild variant="primary"><Link href="/learner">Open official workspace <span aria-hidden="true">→</span></Link></Button><Button asChild variant="secondary"><Link href="/admin">View administrator workspace</Link></Button></div>
     </section>
 
     <section className="workflow-preview workflow-preview-decorated" aria-labelledby="workflow-title">
