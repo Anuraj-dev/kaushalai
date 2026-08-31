@@ -10,7 +10,8 @@ export class LearningService {
   constructor(private readonly database: KaushalDatabase = getDatabase(), private readonly id: () => string = randomUUID) {}
 
   createPath(assessmentId: string): LearningPath {
-    const gaps = this.database.prepare(`SELECT r.competency_id,c.name,r.priority,t.tag FROM assessment_results r JOIN competencies c ON c.id=r.competency_id LEFT JOIN competency_course_tags t ON t.competency_id=c.id WHERE r.assessment_id=? AND r.supported=1 AND r.gap>0 ORDER BY r.priority DESC`).all(assessmentId) as Row[];
+    // A4-04: include unsupported gaps (gap>0) ordered by supported first then priority; fixes empty path for primary matrix
+    const gaps = this.database.prepare(`SELECT r.competency_id,c.name,r.priority,t.tag FROM assessment_results r JOIN competencies c ON c.id=r.competency_id LEFT JOIN competency_course_tags t ON t.competency_id=c.id WHERE r.assessment_id=? AND r.gap>0 ORDER BY r.supported DESC, r.priority DESC`).all(assessmentId) as Row[];
     const grouped = new Map<string, PriorityGap>();
     for (const row of gaps) {
       const competencyId = String(row.competency_id);

@@ -1,0 +1,10 @@
+CREATE INDEX IF NOT EXISTS idx_assessments_official ON assessments(official_id);
+CREATE INDEX IF NOT EXISTS idx_assessment_rounds_assessment ON assessment_rounds(assessment_id);
+CREATE INDEX IF NOT EXISTS idx_responses_round ON responses(round_id);
+CREATE INDEX IF NOT EXISTS idx_evidence_assessment ON evidence(assessment_id);
+CREATE INDEX IF NOT EXISTS idx_evidence_assessment_comp ON evidence(assessment_id, competency_id);
+CREATE INDEX IF NOT EXISTS idx_assessment_results_assessment ON assessment_results(assessment_id);
+CREATE INDEX IF NOT EXISTS idx_course_completions_official ON course_completions(official_id);
+CREATE INDEX IF NOT EXISTS idx_learning_history_official ON learning_history(official_id);
+CREATE INDEX IF NOT EXISTS idx_questions_competency ON questions(competency_id);
+CREATE INDEX IF NOT EXISTS idx_matrix_competencies_version ON matrix_competencies(matrix_version_id);

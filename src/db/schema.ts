@@ -1,4 +1,4 @@
-import { integer, real, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { index, integer, real, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 const timestamps = {
   createdAt: text("created_at").notNull().default("CURRENT_TIMESTAMP"),
@@ -31,25 +31,25 @@ export const matrixVersions = sqliteTable("matrix_versions", {
 }, (table) => [uniqueIndex("matrix_version_unique").on(table.matrixId, table.version)]);
 export const matrixCompetencies = sqliteTable("matrix_competencies", {
   id: text("id").primaryKey(), matrixVersionId: text("matrix_version_id").notNull().references(() => matrixVersions.id), competencyId: text("competency_id").notNull().references(() => competencies.id), requiredLevel: real("required_level").notNull(), importance: real("importance").notNull(), ...timestamps,
-}, (table) => [uniqueIndex("matrix_competency_unique").on(table.matrixVersionId, table.competencyId)]);
+}, (table) => [uniqueIndex("matrix_competency_unique").on(table.matrixVersionId, table.competencyId), index("idx_matrix_competencies_version").on(table.matrixVersionId)]);
 export const questions = sqliteTable("questions", {
   id: text("id").primaryKey(), competencyId: text("competency_id").notNull().references(() => competencies.id), kind: text("kind").notNull(), prompt: text("prompt").notNull(), optionsJson: text("options_json"), answerKeyJson: text("answer_key_json"), rubricJson: text("rubric_json"), active: integer("active", { mode: "boolean" }).notNull().default(true), ...timestamps,
-});
+}, (table) => [index("idx_questions_competency").on(table.competencyId)]);
 export const assessments = sqliteTable("assessments", {
   id: text("id").primaryKey(), officialId: text("official_id").notNull().references(() => officials.id), matrixVersionId: text("matrix_version_id").notNull().references(() => matrixVersions.id), status: text("status").notNull().default("active"), startedAt: text("started_at").notNull().default("CURRENT_TIMESTAMP"), completedAt: text("completed_at"), ...timestamps,
-});
+}, (table) => [index("idx_assessments_official").on(table.officialId)]);
 export const assessmentRounds = sqliteTable("assessment_rounds", {
   id: text("id").primaryKey(), assessmentId: text("assessment_id").notNull().references(() => assessments.id), roundNumber: integer("round_number").notNull(), kind: text("kind").notNull(), status: text("status").notNull().default("pending"), ...timestamps,
-}, (table) => [uniqueIndex("assessment_round_unique").on(table.assessmentId, table.roundNumber)]);
+}, (table) => [uniqueIndex("assessment_round_unique").on(table.assessmentId, table.roundNumber), index("idx_assessment_rounds_assessment").on(table.assessmentId)]);
 export const responses = sqliteTable("responses", {
   id: text("id").primaryKey(), roundId: text("round_id").notNull().references(() => assessmentRounds.id), questionId: text("question_id").references(() => questions.id), promptSnapshot: text("prompt_snapshot").notNull(), responseJson: text("response_json").notNull(), submittedAt: text("submitted_at").notNull().default("CURRENT_TIMESTAMP"), ...timestamps,
-});
+}, (table) => [index("idx_responses_round").on(table.roundId)]);
 export const evidence = sqliteTable("evidence", {
   id: text("id").primaryKey(), assessmentId: text("assessment_id").notNull().references(() => assessments.id), competencyId: text("competency_id").notNull().references(() => competencies.id), sourceType: text("source_type").notNull(), level: real("level").notNull(), reliability: real("reliability").notNull(), rationale: text("rationale"), ...timestamps,
-});
+}, (table) => [index("idx_evidence_assessment").on(table.assessmentId), index("idx_evidence_assessment_comp").on(table.assessmentId, table.competencyId)]);
 export const assessmentResults = sqliteTable("assessment_results", {
   id: text("id").primaryKey(), assessmentId: text("assessment_id").notNull().references(() => assessments.id), competencyId: text("competency_id").notNull().references(() => competencies.id), assessedLevel: real("assessed_level").notNull(), requiredLevel: real("required_level").notNull(), gap: real("gap").notNull(), priority: real("priority").notNull(), confidence: real("confidence").notNull(), supported: integer("supported", { mode: "boolean" }).notNull(), ...timestamps,
-}, (table) => [uniqueIndex("assessment_result_unique").on(table.assessmentId, table.competencyId)]);
+}, (table) => [uniqueIndex("assessment_result_unique").on(table.assessmentId, table.competencyId), index("idx_assessment_results_assessment").on(table.assessmentId)]);
 export const courses = sqliteTable("courses", {
   id: text("id").primaryKey(), source: text("source").notNull(), sourceUrl: text("source_url").notNull(), title: text("title").notNull(), provider: text("provider"), duration: text("duration"), level: text("level"), rating: real("rating"), thumbnailUrl: text("thumbnail_url"), detailAvailable: integer("detail_available", { mode: "boolean" }).notNull(), incompleteSource: integer("incomplete_source", { mode: "boolean" }).notNull().default(true), searchTermsJson: text("search_terms_json").notNull(), domainsJson: text("domains_json").notNull(), detailJson: text("detail_json"), provenanceJson: text("provenance_json").notNull(), ...timestamps,
 });
@@ -69,11 +69,11 @@ export const courseCompletions = sqliteTable(
     verifiedAssessmentLevel: real("verified_assessment_level"),
     ...timestamps,
   },
-  (table) => [uniqueIndex("course_completion_unique").on(table.officialId, table.courseId)],
+  (table) => [uniqueIndex("course_completion_unique").on(table.officialId, table.courseId), index("idx_course_completions_official").on(table.officialId)],
 );
 export const learningHistory = sqliteTable("learning_history", {
   id: text("id").primaryKey(), officialId: text("official_id").notNull().references(() => officials.id), competencyId: text("competency_id").notNull().references(() => competencies.id), sourceType: text("source_type").notNull(), sourceId: text("source_id").notNull(), level: real("level").notNull(), reliability: real("reliability").notNull(), recordedAt: text("recorded_at").notNull().default("CURRENT_TIMESTAMP"), ...timestamps,
-});
+}, (table) => [index("idx_learning_history_official").on(table.officialId)]);
 export const reassessmentInvitations = sqliteTable("reassessment_invitations", {
   id: text("id").primaryKey(), officialId: text("official_id").notNull().references(() => officials.id), reason: text("reason").notNull(), sourceId: text("source_id").notNull(), createdAt: text("created_at").notNull().default("CURRENT_TIMESTAMP"), acceptedAt: text("accepted_at"),
 }, (table) => [uniqueIndex("reassessment_invitation_source").on(table.officialId, table.reason, table.sourceId)]);

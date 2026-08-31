@@ -3,6 +3,16 @@ import type { CatalogCourse, LearningPath, PriorityGap } from "./types";
 const normalize = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 const includesTag = (text: string, tag: string) => ` ${normalize(text)} `.includes(` ${normalize(tag)} `);
 
+// A4-05: Synonym fallback to prevent false-negatives (e.g., Government Cloud catalog phrasing varies).
+// If tag is "government cloud", also match "government technology" or "cloud computing" in title/detail.
+// Extends to survey design / industrial statistics via broader phrase matching. Documented fallback and
+// kept alongside existing apis plural handling. Also checks searchTerms with low score (+2) if no title/detail match.
+const SYNONYMS: Record<string, string[]> = {
+  "government cloud": ["government technology", "cloud computing"],
+  "survey design": ["survey"],
+  "industrial statistics": ["industrial"],
+};
+
 // Handle plural "apis" vs singular "api" equivalently for catalog matching
 const isApiTag = (normalizedTag: string) => normalizedTag === "api" || normalizedTag === "apis";
 const matchesApiTag = (text: string) => includesTag(text, "api") || includesTag(text, "apis");
@@ -28,18 +38,35 @@ function evidenceScore(course: CatalogCourse, tags: string[]): number {
     return false;
   });
   if (specialistFalsePositive) return 0;
+  // Government Cloud synonym handling: if tag is "government cloud", also match synonym phrases
+  // in title/detail via SYNONYMS (government technology / cloud computing). Generic synonym
+  // check also covers survey design -> survey, industrial statistics -> industrial.
   const titleMatch = tags.some((tag) => {
     const n = normalize(tag);
     if (isApiTag(n)) return matchesApiTag(normalizedTitle);
-    return includesTag(normalizedTitle, tag);
+    if (includesTag(normalizedTitle, tag)) return true;
+    const syns = SYNONYMS[n];
+    return syns ? syns.some((syn) => includesTag(normalizedTitle, syn)) : false;
   });
   const detailMatch = course.detailAvailable && tags.some((tag) => {
     const n = normalize(tag);
     if (isApiTag(n)) return matchesApiTag(detailText);
-    return includesTag(detailText, tag);
+    if (includesTag(detailText, tag)) return true;
+    const syns = SYNONYMS[n];
+    return syns ? syns.some((syn) => includesTag(detailText, syn)) : false;
   });
-  if (!titleMatch && !detailMatch) return 0;
-  return (detailMatch ? 100 : 0) + (titleMatch ? 20 : 0) + (course.detailAvailable ? 5 : 0);
+  // Fallback to searchTerms with low score (+2) if no title/detail match but search_terms contains phrase/synonym
+  const searchTermsText = course.searchTerms.join(" ");
+  const searchMatch = tags.some((tag) => {
+    const n = normalize(tag);
+    if (isApiTag(n)) return matchesApiTag(searchTermsText);
+    if (includesTag(searchTermsText, tag)) return true;
+    const syns = SYNONYMS[n];
+    return syns ? syns.some((syn) => includesTag(searchTermsText, syn)) : false;
+  });
+  if (!titleMatch && !detailMatch && !searchMatch) return 0;
+  if (!titleMatch && !detailMatch && searchMatch) return 2;
+  return (detailMatch ? 100 : 0) + (titleMatch ? 20 : 0) + (searchMatch ? 2 : 0) + (course.detailAvailable ? 5 : 0);
 }
 
 export function isEligibleCourse(course: CatalogCourse, tags: string[]): boolean {

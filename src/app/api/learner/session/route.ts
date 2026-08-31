@@ -49,16 +49,29 @@ function requirements(db: KaushalDatabase, versionId: string): CompetencyRequire
   }));
 }
 
+// TODO(H2): pin rubrics/questions to matrix_version_id snapshot — currently loads current globals
+// Loop4 will add versioned snapshot tables.
 function rubrics(db: KaushalDatabase, competencyIds: string[]) {
   const result = new Map<string, Array<{ level: number; criterion: string }>>();
-  for (const competencyId of competencyIds) {
-    const entries = (db.prepare("SELECT level,descriptor FROM competency_rubrics WHERE competency_id=? ORDER BY level").all(competencyId) as Row[])
-      .map((row) => ({ level: Number(row.level), criterion: String(row.descriptor) }));
-    result.set(competencyId, entries);
+  for (const competencyId of competencyIds) result.set(competencyId, []);
+  if (competencyIds.length === 0) return result;
+  const unique = [...new Set(competencyIds)];
+  const placeholders = unique.map(() => "?").join(",");
+  const rows = db
+    .prepare(`SELECT competency_id, level, descriptor FROM competency_rubrics WHERE competency_id IN (${placeholders}) ORDER BY competency_id, level`)
+    .all(...unique) as Row[];
+  for (const row of rows) {
+    const id = String(row.competency_id);
+    const entry = { level: Number(row.level), criterion: String(row.descriptor) };
+    const bucket = result.get(id);
+    if (bucket) bucket.push(entry);
+    else result.set(id, [entry]);
   }
   return result;
 }
 
+// TODO(H2): pin rubrics/questions to matrix_version_id snapshot — currently loads current globals
+// Loop4 will add versioned snapshot tables.
 function baselineQuestions(db: KaushalDatabase, matrix: CompetencyRequirement[]): StoredQuestion[] {
   return matrix.map((requirement) => {
     const row = db.prepare("SELECT id,prompt,options_json FROM questions WHERE competency_id=? AND kind IN ('baseline_single_choice','baseline') AND active=1 ORDER BY id LIMIT 1").get(requirement.competencyId) as Row | undefined;

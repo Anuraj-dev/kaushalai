@@ -104,6 +104,9 @@ export class AdminRepository {
       (SELECT COUNT(*) FROM assessment_results WHERE supported=1) supported`).get() as Row;
     const resultCount = number(totals.results);
     const gaps = this.database.prepare("SELECT c.domain,COUNT(*) gaps FROM assessment_results ar JOIN competencies c ON c.id=ar.competency_id WHERE ar.supported=1 AND ar.gap>0 GROUP BY c.domain ORDER BY c.domain").all() as Row[];
+    // M5: readinessPercent here is org-level pass rate (supported results where assessed_level >= required_level / total results),
+    // diverging from domain/assessment/scoring.ts:145 weighted readiness (attainment * importance / importanceTotal) which is per-assessment learner readiness.
+    // Intentionally separate metric: org pass rate vs learner readiness. No logic change.
     return { officials: number(totals.officials), completedAssessments: number(totals.completed), readinessPercent: resultCount ? Math.round(number(totals.ready) / resultCount * 100) : 0, assessmentCoveragePercent: resultCount ? Math.round(number(totals.supported) / resultCount * 100) : 0, courseAssignments: number(totals.assignments), courseCompletions: number(totals.completions), supportedGapsByDomain: gaps.map((row) => ({ domain: String(row.domain), gaps: number(row.gaps) })) };
   }
 }
