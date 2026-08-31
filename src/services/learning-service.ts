@@ -1,12 +1,7 @@
 import { randomUUID } from "node:crypto";
-import { z } from "zod";
 import type { KaushalDatabase } from "@/db/client";
 import { getDatabase } from "@/db/client";
 import { buildLearningPath, type CatalogCourse, type LearningPath, type PriorityGap } from "@/domain/recommendations";
-
-// UNIQUE(official_id, course_id) not enforced at DB level — enforce idempotency in application layer
-// See migrations: course_completions has no unique index, so duplicate guard below prevents double inserts
-void z;
 
 type Row = Record<string, unknown>;
 const parse = <T>(value: unknown, fallback: T): T => { try { return value ? JSON.parse(String(value)) as T : fallback; } catch { return fallback; } };
@@ -51,21 +46,33 @@ export class LearningService {
     const completionId = this.id();
     const reliability = input.verifiedAssessment ? 0.5 : 0.25;
     const sourceType = input.verifiedAssessment ? "verified-course-assessment" : "course-completion";
-    const before = this.database.prepare("SELECT assessed_level FROM assessment_results r JOIN assessments a ON a.id=r.assessment_id WHERE a.official_id=? AND r.competency_id=? ORDER BY a.started_at DESC LIMIT 1").get(input.officialId, input.competencyId) as { assessed_level: number } | undefined;
+    const before = this.database
+      .prepare(
+        "SELECT assessed_level FROM assessment_results r JOIN assessments a ON a.id=r.assessment_id WHERE a.official_id=? AND r.competency_id=? ORDER BY a.started_at DESC LIMIT 1",
+      )
+      .get(input.officialId, input.competencyId) as { assessed_level: number } | undefined;
     let isDuplicate = false;
     this.database.transaction(() => {
-      // Idempotency guard: course_completions has no DB-level UNIQUE(official_id, course_id), check before inserts
-      const existing = this.database.prepare("SELECT id FROM course_completions WHERE official_id=? AND course_id=?").get(input.officialId, input.courseId) as { id: string } | undefined;
-      if (existing) {
+      const result = this.database
+        .prepare(
+          "INSERT OR IGNORE INTO course_completions(id,official_id,course_id,completed_at,verified_assessment_level) VALUES (?,?,?,CURRENT_TIMESTAMP,?)",
+        )
+        .run(completionId, input.officialId, input.courseId, input.verifiedAssessment ? input.level ?? 1 : null);
+      if (result.changes === 0) {
         isDuplicate = true;
         return;
       }
-      this.database.prepare("INSERT INTO course_completions(id,official_id,course_id,completed_at,verified_assessment_level) VALUES (?,?,?,CURRENT_TIMESTAMP,?)").run(completionId, input.officialId, input.courseId, input.verifiedAssessment ? input.level ?? 1 : null);
-      this.database.prepare("INSERT INTO learning_history(id,official_id,competency_id,source_type,source_id,level,reliability) VALUES (?,?,?,?,?,?,?)").run(this.id(), input.officialId, input.competencyId, sourceType, completionId, input.level ?? 1, reliability);
-      this.database.prepare("INSERT INTO reassessment_invitations(id,official_id,reason,source_id) VALUES (?,?,?,?)").run(this.id(), input.officialId, "course_completion", completionId);
+      this.database
+        .prepare("INSERT INTO learning_history(id,official_id,competency_id,source_type,source_id,level,reliability) VALUES (?,?,?,?,?,?,?)")
+        .run(this.id(), input.officialId, input.competencyId, sourceType, completionId, input.level ?? 1, reliability);
+      this.database
+        .prepare("INSERT INTO reassessment_invitations(id,official_id,reason,source_id) VALUES (?,?,?,?)")
+        .run(this.id(), input.officialId, "course_completion", completionId);
     })();
     if (isDuplicate) {
-      const existing = this.database.prepare("SELECT id FROM course_completions WHERE official_id=? AND course_id=?").get(input.officialId, input.courseId) as { id: string } | undefined;
+      const existing = this.database.prepare("SELECT id FROM course_completions WHERE official_id=? AND course_id=?").get(input.officialId, input.courseId) as
+        | { id: string }
+        | undefined;
       return { completionId: existing?.id ?? completionId, reliability, reassessmentInvited: true, proficiencyChanged: false };
     }
     const after = this.database.prepare("SELECT assessed_level FROM assessment_results r JOIN assessments a ON a.id=r.assessment_id WHERE a.official_id=? AND r.competency_id=? ORDER BY a.started_at DESC LIMIT 1").get(input.officialId, input.competencyId) as { assessed_level: number } | undefined;

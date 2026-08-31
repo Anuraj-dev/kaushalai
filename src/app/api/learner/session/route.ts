@@ -207,7 +207,7 @@ async function submitRound(db: KaushalDatabase, assessmentId: string, answers: A
     for (const question of payload.questions) {
       if (question.format === "single_choice") {
         const option = question.options.find((item) => item.id === answerMap.get(question.id));
-        if (!option) throw new Error("A baseline answer is not one of the stored choices");
+        if (!option) throw new Error("Answer is not one of the stored choices");
         deterministic.set(question.id, { level: option.demonstratedLevel, reliability: EVIDENCE_RELIABILITY["fixed-assessment"], reason: `Selected: ${option.text}` });
       }
     }
@@ -270,7 +270,20 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json() as { action?: string; officialId?: string; assessmentId?: string; answers?: Answer[]; courseId?: string; competencyId?: string };
+    const rawBody: unknown = await request.json();
+    const bodySchema = z
+      .object({
+        action: z.string().optional(),
+        officialId: z.string().trim().min(1).max(64).optional(),
+        assessmentId: z.string().trim().min(1).max(64).optional(),
+        answers: z.array(answerSchema).max(10).optional(),
+        courseId: z.string().trim().min(1).optional(),
+        competencyId: z.string().trim().min(1).optional(),
+      })
+      .passthrough();
+    const parsedBody = bodySchema.safeParse(rawBody);
+    if (!parsedBody.success) return fail("Invalid request", 400);
+    const body = parsedBody.data as { action?: string; officialId?: string; assessmentId?: string; answers?: Answer[]; courseId?: string; competencyId?: string };
     const db = database();
     if (body.action === "start" || body.action === "reassess") {
       if (!body.officialId) return fail("officialId is required");
@@ -286,7 +299,7 @@ export async function POST(request: Request) {
     }
     if (body.action === "submit-round") {
       if (!body.assessmentId) return fail("assessmentId is required");
-      const parsedAnswers = z.array(answerSchema).safeParse(body.answers);
+      const parsedAnswers = z.array(answerSchema).max(10).safeParse(body.answers);
       if (!parsedAnswers.success) return fail("Invalid answers", 400);
       await restoreAssessmentFromSnapshot(db, body.assessmentId);
       await submitRound(db, body.assessmentId, parsedAnswers.data);
@@ -302,6 +315,18 @@ export async function POST(request: Request) {
     }
     return fail("Unknown learner action");
   } catch (error) {
-    return fail(error instanceof Error ? error.message : "Unable to update learner session");
+    console.error("[learner/session] error", error);
+    const message = error instanceof Error ? error.message : "Unable to update learner session";
+    // Sanitize: only expose known safe messages, else generic
+    const safe =
+      message.startsWith("Answer ") ||
+      message.startsWith("Active assessment") ||
+      message.startsWith("No assessment") ||
+      message === "Invalid request" ||
+      message === "Invalid answers" ||
+      message.startsWith("Baseline question") ||
+      message.startsWith("A baseline") ||
+      message.startsWith("Answer is not");
+    return fail(safe ? message : "Unable to update learner session", 500);
   }
 }

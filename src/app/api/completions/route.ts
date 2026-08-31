@@ -3,13 +3,15 @@ import { LearningService } from "@/services/learning-service";
 
 export const runtime = "nodejs";
 
-const completionSchema = z.object({
-  officialId: z.string().min(1),
-  courseId: z.string().min(1),
-  competencyId: z.string().min(1),
-  level: z.number().int().min(1).max(5).optional(),
-  assessmentId: z.string().optional(),
-});
+const completionSchema = z
+  .object({
+    officialId: z.string().trim().min(1),
+    courseId: z.string().trim().min(1),
+    competencyId: z.string().trim().min(1),
+    level: z.number().int().min(1).max(5).optional(),
+    assessmentId: z.string().trim().optional(),
+  })
+  .strict();
 
 export async function POST(request: Request) {
   try {

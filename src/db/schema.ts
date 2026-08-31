@@ -59,9 +59,18 @@ export const courseCompetencies = sqliteTable("course_competencies", {
 export const recommendations = sqliteTable("recommendations", {
   id: text("id").primaryKey(), assessmentId: text("assessment_id").notNull().references(() => assessments.id), competencyId: text("competency_id").notNull().references(() => competencies.id), courseId: text("course_id").notNull().references(() => courses.id), rank: integer("rank").notNull(), rationale: text("rationale").notNull(), ...timestamps,
 });
-export const courseCompletions = sqliteTable("course_completions", {
-  id: text("id").primaryKey(), officialId: text("official_id").notNull().references(() => officials.id), courseId: text("course_id").notNull().references(() => courses.id), completedAt: text("completed_at").notNull(), verifiedAssessmentLevel: real("verified_assessment_level"), ...timestamps,
-});
+export const courseCompletions = sqliteTable(
+  "course_completions",
+  {
+    id: text("id").primaryKey(),
+    officialId: text("official_id").notNull().references(() => officials.id),
+    courseId: text("course_id").notNull().references(() => courses.id),
+    completedAt: text("completed_at").notNull(),
+    verifiedAssessmentLevel: real("verified_assessment_level"),
+    ...timestamps,
+  },
+  (table) => [uniqueIndex("course_completion_unique").on(table.officialId, table.courseId)],
+);
 export const learningHistory = sqliteTable("learning_history", {
   id: text("id").primaryKey(), officialId: text("official_id").notNull().references(() => officials.id), competencyId: text("competency_id").notNull().references(() => competencies.id), sourceType: text("source_type").notNull(), sourceId: text("source_id").notNull(), level: real("level").notNull(), reliability: real("reliability").notNull(), recordedAt: text("recorded_at").notNull().default("CURRENT_TIMESTAMP"), ...timestamps,
 });

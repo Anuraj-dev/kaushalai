@@ -238,19 +238,28 @@ describe("provider SDK adapters", () => {
     const result = await adapter.execute({ ...providerRequest, timeoutMs: 6_000 });
 
     expect(result.requestId).toBe("groq-id");
-    expect(create).toHaveBeenCalledWith(expect.objectContaining({
-      model: "qwen/qwen3.8-27b", reasoning_effort: "none", stream: false, max_tokens: 2_500,
-      response_format: { type: "json_schema", json_schema: { name: "adaptive_questions", strict: true, schema: QUESTION_JSON_SCHEMA } },
-    }));
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        model: "qwen/qwen3.8-27b",
+        reasoning_effort: "none",
+        stream: false,
+        max_tokens: 2_500,
+        response_format: { type: "json_schema", json_schema: { name: "adaptive_questions", strict: true, schema: QUESTION_JSON_SCHEMA } },
+      }),
+      expect.anything(),
+    );
   });
 
   it("uses the smaller evaluation output cap and evaluation schema", async () => {
     const create = vi.fn(async () => ({ choices: [{ message: { content: JSON.stringify({ schemaVersion: "1.0", evaluations: [] }) } }] }));
     const adapter = createGroqAdapter({ apiKey: "test-key", client: { chat: { completions: { create } } } as never });
     await adapter.execute({ ...providerRequest, operation: "evaluate_written_answers" });
-    expect(create).toHaveBeenCalledWith(expect.objectContaining({
-      max_tokens: 1_200,
-      response_format: { type: "json_schema", json_schema: { name: "written_evaluations", strict: true, schema: EVALUATION_JSON_SCHEMA } },
-    }));
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        max_tokens: 1_200,
+        response_format: { type: "json_schema", json_schema: { name: "written_evaluations", strict: true, schema: EVALUATION_JSON_SCHEMA } },
+      }),
+      expect.anything(),
+    );
   });
 });
