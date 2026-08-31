@@ -20,6 +20,7 @@ export type AiProviderEnvironment = {
   GEMINI_MODEL?: string;
   GROQ_API_KEY?: string;
   GROQ_MODEL?: string;
+  AI_PROVIDER_MODE?: string;
 };
 
 function schemaFor(request: ProviderRequest) {
@@ -134,7 +135,15 @@ export function createConfiguredProviderAdapters(environment?: AiProviderEnviron
     GEMINI_MODEL: process.env.GEMINI_MODEL,
     GROQ_API_KEY: process.env.GROQ_API_KEY,
     GROQ_MODEL: process.env.GROQ_MODEL,
+    AI_PROVIDER_MODE: process.env.AI_PROVIDER_MODE,
   };
+  const isSeeded = configured.AI_PROVIDER_MODE === "seeded" || process.env.AI_PROVIDER_MODE === "seeded";
+  if (isSeeded) {
+    return {
+      gemini: createGeminiAdapter({}),
+      groq: createGroqAdapter({}),
+    };
+  }
   return {
     gemini: createGeminiAdapter({ apiKey: configured.GEMINI_API_KEY, model: configured.GEMINI_MODEL ?? GEMINI_MODEL }),
     groq: createGroqAdapter({ apiKey: configured.GROQ_API_KEY, model: configured.GROQ_MODEL ?? GROQ_MODEL }),
