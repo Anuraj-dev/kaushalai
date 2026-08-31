@@ -10,6 +10,10 @@ import { getDatabase, type KaushalDatabase } from "@/db/client";
 import { persistAssessmentSnapshot, restoreAssessmentFromSnapshot } from "@/db/assessment-snapshot-store";
 import { EVIDENCE_RELIABILITY, scoreAssessment, type AssessmentResult, type CompetencyRequirement, type Evidence } from "@/domain/assessment";
 import { LearningService } from "@/services/learning-service";
+import { z } from "zod";
+
+const ANSWER_LIMIT = 2000;
+const answerSchema = z.object({ questionId: z.string().min(1), value: z.string().trim().min(1).max(2000) });
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -187,6 +191,9 @@ async function submitRound(db: KaushalDatabase, assessmentId: string, answers: A
   if (answers.length !== payload.questions.length || new Set(answers.map((item) => item.questionId)).size !== answers.length) throw new Error("Answer every question once before submitting");
   const answerMap = new Map(answers.map((item) => [item.questionId, item.value.trim()]));
   if (payload.questions.some((question) => !answerMap.has(question.id) || !answerMap.get(question.id))) throw new Error("Answer every question once before submitting");
+  for (const value of answerMap.values()) {
+    if (value.length > ANSWER_LIMIT) throw new Error("Answer too long (max 2000 characters)");
+  }
   const roundNumber = Number(round.round_number) as 1 | 2 | 3;
   let evaluated = new Map<string, { level: number; reliability: number; reason: string }>();
   if (roundNumber === 1) {
@@ -196,12 +203,27 @@ async function submitRound(db: KaushalDatabase, assessmentId: string, answers: A
       return [question.id, { level: option.demonstratedLevel, reliability: EVIDENCE_RELIABILITY["fixed-assessment"], reason: `Selected: ${option.text}` }];
     }));
   } else {
-    const result = await aiService().evaluateWrittenAnswers({
-      assessmentSessionId: assessmentId, matrixVersionId: String(assessment.matrix_version_id),
-      answers: payload.questions.map((question) => ({ questionId: question.id, competencyId: question.competencyId, answer: answerMap.get(question.id)!, rubric: question.rubric, fallbackDemonstratedLevel: 2 })),
-    });
-    evaluated = new Map(result.data.evaluations.map((item) => [item.questionId, { level: item.demonstratedLevel, reliability: Math.min(0.8, Math.max(0.1, item.confidence || 0.6)), reason: item.evidenceSummary }]));
+    const deterministic = new Map<string, { level: number; reliability: number; reason: string }>();
+    for (const question of payload.questions) {
+      if (question.format === "single_choice") {
+        const option = question.options.find((item) => item.id === answerMap.get(question.id));
+        if (!option) throw new Error("A baseline answer is not one of the stored choices");
+        deterministic.set(question.id, { level: option.demonstratedLevel, reliability: EVIDENCE_RELIABILITY["fixed-assessment"], reason: `Selected: ${option.text}` });
+      }
+    }
+    const written = payload.questions.filter((question) => question.format === "short_text");
+    if (written.length > 0) {
+      const result = await aiService().evaluateWrittenAnswers({
+        assessmentSessionId: assessmentId, matrixVersionId: String(assessment.matrix_version_id),
+        answers: written.map((question) => ({ questionId: question.id, competencyId: question.competencyId, answer: answerMap.get(question.id)!, rubric: question.rubric, fallbackDemonstratedLevel: 2 })),
+      });
+      evaluated = new Map(result.data.evaluations.map((item) => [item.questionId, { level: item.demonstratedLevel, reliability: Math.min(0.8, Math.max(0.1, item.confidence ?? 0.6)), reason: item.evidenceSummary }]));
+    } else {
+      evaluated = new Map();
+    }
+    for (const [key, value] of deterministic) evaluated.set(key, value);
   }
+  // NOTE: Known split transaction atomicity (C-AUD-01) — kept as-is per F1 scope; do not merge without product review
   db.transaction(() => {
     const response = db.prepare("INSERT INTO responses(id,round_id,question_id,prompt_snapshot,response_json) VALUES (?,?,?,?,?)");
     const insertEvidence = db.prepare("INSERT INTO evidence(id,assessment_id,competency_id,source_type,level,reliability,rationale) VALUES (?,?,?,?,?,?,?)");
@@ -215,6 +237,7 @@ async function submitRound(db: KaushalDatabase, assessmentId: string, answers: A
   const matrix = requirements(db, String(assessment.matrix_version_id));
   const scored = scoreAssessment(matrix, assessmentEvidence(db, assessmentId));
   if (!scored.ok) throw new Error(scored.error.message);
+  // NOTE: Split transaction (C-AUD-01) — persistResults in separate txn, kept as-is per F1 scope
   db.transaction(() => persistResults(db, assessmentId, scored.value))();
   if (roundNumber === 1) await createAdaptiveRound(db, assessmentId, String(assessment.matrix_version_id), 2, matrix);
   else if (roundNumber === 2 && scored.value.round3Required) {
@@ -263,8 +286,10 @@ export async function POST(request: Request) {
     }
     if (body.action === "submit-round") {
       if (!body.assessmentId) return fail("assessmentId is required");
+      const parsedAnswers = z.array(answerSchema).safeParse(body.answers);
+      if (!parsedAnswers.success) return fail("Invalid answers", 400);
       await restoreAssessmentFromSnapshot(db, body.assessmentId);
-      await submitRound(db, body.assessmentId, body.answers ?? []);
+      await submitRound(db, body.assessmentId, parsedAnswers.data);
       await persistAssessmentSnapshot(db, body.assessmentId);
       return Response.json(session(db, body.assessmentId));
     }
