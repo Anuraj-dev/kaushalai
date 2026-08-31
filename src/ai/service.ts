@@ -1,3 +1,4 @@
+import { randomUUID as nodeRandomUUID } from "node:crypto";
 import {
   AI_SCHEMA_VERSION,
   AiContractError,
@@ -143,7 +144,7 @@ export function createAiAssessmentService(dependencies: Dependencies) {
   const now = dependencies.now ?? Date.now;
   const sleep = dependencies.sleep ?? ((milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)));
   const jitterMs = dependencies.jitterMs ?? (() => 500 + Math.floor(Math.random() * 251));
-  const makeCorrelationId = dependencies.correlationId ?? (() => crypto.randomUUID());
+  const makeCorrelationId = dependencies.correlationId ?? (() => nodeRandomUUID());
   const logger = dependencies.logger ?? (() => undefined);
 
   async function run<T>(parameters: {
@@ -192,7 +193,8 @@ export function createAiAssessmentService(dependencies: Dependencies) {
       }
     }
 
-    const data = parameters.fallback();
+    let data: T;
+    try { data = parameters.fallback(); } catch (e) { const msg = e instanceof Error ? e.message : String(e); logger(eventFor({ parameters, correlationId, attemptId: `${correlationId}:seeded-fallback:1`, provider: "seeded-fallback", model: "seeded-bank-v1", attemptNumber: 1, outcome: "fallback", latencyMs: now() - startedAt, fallbackReason: `fallback_invalid:${msg}` })); throw e; }
     const attemptId = `${correlationId}:seeded-fallback:1`;
     logger(eventFor({ parameters, correlationId, attemptId, provider: "seeded-fallback", model: "seeded-bank-v1", attemptNumber: 1, outcome: "fallback", latencyMs: now() - startedAt, fallbackReason }));
     return { data, provider: "seeded-fallback", model: "seeded-bank-v1", requestId: correlationId, attempts: totalAttempts, latencyMs: now() - startedAt };

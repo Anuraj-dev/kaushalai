@@ -88,15 +88,15 @@ export const QUESTION_JSON_SCHEMA = {
     questions: { type: "array", minItems: 1, maxItems: 10, items: {
       type: "object", additionalProperties: false,
       properties: {
-        id: { type: "string" }, competencyId: { type: "string" },
+        id: { type: "string", minLength: 1 }, competencyId: { type: "string", minLength: 1 },
         format: { type: "string", enum: ["single_choice", "short_text"] },
-        prompt: { type: "string" }, targetLevel: { type: "integer", minimum: 1, maximum: 5 },
-        selectionReason: { type: "string" },
+        prompt: { type: "string", minLength: 1 }, targetLevel: { type: "integer", minimum: 1, maximum: 5 },
+        selectionReason: { type: "string", minLength: 1 },
         options: { type: "array", maxItems: 5, items: { type: "object", additionalProperties: false,
-          properties: { id: { type: "string" }, text: { type: "string" }, demonstratedLevel: { type: "integer", minimum: 1, maximum: 5 } },
+          properties: { id: { type: "string", minLength: 1 }, text: { type: "string", minLength: 1 }, demonstratedLevel: { type: "integer", minimum: 1, maximum: 5 } },
           required: ["id", "text", "demonstratedLevel"] } },
         rubric: { type: "array", minItems: 1, maxItems: 5, items: { type: "object", additionalProperties: false,
-          properties: { level: { type: "integer", minimum: 1, maximum: 5 }, criterion: { type: "string" } }, required: ["level", "criterion"] } },
+          properties: { level: { type: "integer", minimum: 1, maximum: 5 }, criterion: { type: "string", minLength: 1 } }, required: ["level", "criterion"] } },
       },
       required: ["id", "competencyId", "format", "prompt", "targetLevel", "selectionReason", "options", "rubric"],
     } },
@@ -111,10 +111,10 @@ export const EVALUATION_JSON_SCHEMA = {
     evaluations: { type: "array", minItems: 1, maxItems: 10, items: {
       type: "object", additionalProperties: false,
       properties: {
-        questionId: { type: "string" }, competencyId: { type: "string" },
+        questionId: { type: "string", minLength: 1 }, competencyId: { type: "string", minLength: 1 },
         demonstratedLevel: { type: "integer", minimum: 1, maximum: 5 },
-        confidence: { type: "number", minimum: 0, maximum: 1 }, evidenceSummary: { type: "string" },
-        rubricReason: { type: "string" }, ambiguity: { type: "string" },
+        confidence: { type: "number", minimum: 0, maximum: 1 }, evidenceSummary: { type: "string", minLength: 1 },
+        rubricReason: { type: "string", minLength: 1 }, ambiguity: { type: "string" },
       },
       required: ["questionId", "competencyId", "demonstratedLevel", "confidence", "evidenceSummary", "rubricReason", "ambiguity"],
     } },
@@ -145,6 +145,7 @@ export function validateGeneratedQuestions(value: unknown, request: GenerateAdap
     if (question.format === "short_text" && question.options.length !== 0) throw new AiContractError("semantic_error", "Short-text question cannot contain options");
     const allowedLevels = new Set(competency.rubric.map((entry) => entry.level));
     if (question.rubric.some((entry) => !allowedLevels.has(entry.level))) throw new AiContractError("semantic_error", "Question rubric contains a level outside the pinned matrix rubric");
+    if (!allowedLevels.has(question.targetLevel)) throw new AiContractError("semantic_error", "Question targetLevel outside pinned rubric");
   }
   return result;
 }
@@ -165,10 +166,18 @@ export function validateWrittenEvaluations(value: unknown, request: EvaluateWrit
     if (!answer.rubric.some((entry) => entry.level === evaluation.demonstratedLevel)) throw new AiContractError("semantic_error", "Evaluation level is not present in the stored rubric");
     const answerWords = evidenceWords(`${answer.answer} ${answer.rubric.map((entry) => entry.criterion).join(" ")}`);
     const evidenceSummaryWords = evidenceWords(evaluation.evidenceSummary);
-    if (evidenceSummaryWords.size > 0 && ![...evidenceSummaryWords].some((word) => answerWords.has(word))) throw new AiContractError("semantic_error", "Evaluation claims evidence outside the written answer");
+    if (evidenceSummaryWords.size > 0) {
+      const overlap = [...evidenceSummaryWords].filter((w) => answerWords.has(w)).length;
+      const required = Math.min(evidenceSummaryWords.size, Math.max(1, Math.ceil(evidenceSummaryWords.size * 0.4)));
+      if (overlap < required) throw new AiContractError("semantic_error", "Evaluation claims evidence outside the written answer");
+    }
     const rubricSourceWords = evidenceWords(`${answer.answer} ${answer.rubric.map((entry) => entry.criterion).join(" ")}`);
     const rubricReasonWords = evidenceWords(evaluation.rubricReason);
-    if (rubricReasonWords.size > 0 && ![...rubricReasonWords].some((word) => rubricSourceWords.has(word))) throw new AiContractError("semantic_error", "Evaluation reason is not grounded in the answer or rubric");
+    if (rubricReasonWords.size > 0) {
+      const overlap = [...rubricReasonWords].filter((w) => rubricSourceWords.has(w)).length;
+      const required = Math.min(rubricReasonWords.size, Math.max(1, Math.ceil(rubricReasonWords.size * 0.4)));
+      if (overlap < required) throw new AiContractError("semantic_error", "Evaluation reason is not grounded in the answer or rubric");
+    }
   }
   return parsed.data;
 }

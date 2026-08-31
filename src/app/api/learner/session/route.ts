@@ -10,6 +10,10 @@ import { getDatabase, type KaushalDatabase } from "@/db/client";
 import { persistAssessmentSnapshot, restoreAssessmentFromSnapshot } from "@/db/assessment-snapshot-store";
 import { EVIDENCE_RELIABILITY, scoreAssessment, type AssessmentResult, type CompetencyRequirement, type Evidence } from "@/domain/assessment";
 import { LearningService } from "@/services/learning-service";
+import { z } from "zod";
+
+const ANSWER_LIMIT = 2000;
+const answerSchema = z.object({ questionId: z.string().min(1), value: z.string().trim().min(1).max(2000) });
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -96,6 +100,8 @@ function aiService() {
   return createAiAssessmentService({ ...adapters, logger: (event) => console.warn(JSON.stringify(event)) });
 }
 
+// Legacy helper kept for reference — now inlined in submitRound for single-txn atomicity (C-AUD-01)
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 async function createAdaptiveRound(db: KaushalDatabase, assessmentId: string, versionId: string, round: 2 | 3, matrix: CompetencyRequirement[]) {
   const count = round === 2 ? Math.min(10, Math.max(7, matrix.length)) : Math.min(5, matrix.length);
   const fallback = fallbackQuestions(db, matrix, count, round);
@@ -127,6 +133,7 @@ function assessmentEvidence(db: KaushalDatabase, assessmentId: string): Evidence
   return [...current, ...history];
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function persistResults(db: KaushalDatabase, assessmentId: string, result: AssessmentResult) {
   db.prepare("DELETE FROM assessment_results WHERE assessment_id=?").run(assessmentId);
   const insert = db.prepare(`INSERT INTO assessment_results(id,assessment_id,competency_id,assessed_level,required_level,gap,priority,confidence,supported)
@@ -187,6 +194,9 @@ async function submitRound(db: KaushalDatabase, assessmentId: string, answers: A
   if (answers.length !== payload.questions.length || new Set(answers.map((item) => item.questionId)).size !== answers.length) throw new Error("Answer every question once before submitting");
   const answerMap = new Map(answers.map((item) => [item.questionId, item.value.trim()]));
   if (payload.questions.some((question) => !answerMap.has(question.id) || !answerMap.get(question.id))) throw new Error("Answer every question once before submitting");
+  for (const value of answerMap.values()) {
+    if (value.length > ANSWER_LIMIT) throw new Error("Answer too long (max 2000 characters)");
+  }
   const roundNumber = Number(round.round_number) as 1 | 2 | 3;
   let evaluated = new Map<string, { level: number; reliability: number; reason: string }>();
   if (roundNumber === 1) {
@@ -196,28 +206,61 @@ async function submitRound(db: KaushalDatabase, assessmentId: string, answers: A
       return [question.id, { level: option.demonstratedLevel, reliability: EVIDENCE_RELIABILITY["fixed-assessment"], reason: `Selected: ${option.text}` }];
     }));
   } else {
-    const result = await aiService().evaluateWrittenAnswers({
-      assessmentSessionId: assessmentId, matrixVersionId: String(assessment.matrix_version_id),
-      answers: payload.questions.map((question) => ({ questionId: question.id, competencyId: question.competencyId, answer: answerMap.get(question.id)!, rubric: question.rubric, fallbackDemonstratedLevel: 2 })),
-    });
-    evaluated = new Map(result.data.evaluations.map((item) => [item.questionId, { level: item.demonstratedLevel, reliability: Math.min(0.8, Math.max(0.1, item.confidence || 0.6)), reason: item.evidenceSummary }]));
-  }
-  db.transaction(() => {
-    const response = db.prepare("INSERT INTO responses(id,round_id,question_id,prompt_snapshot,response_json) VALUES (?,?,?,?,?)");
-    const insertEvidence = db.prepare("INSERT INTO evidence(id,assessment_id,competency_id,source_type,level,reliability,rationale) VALUES (?,?,?,?,?,?,?)");
+    const deterministic = new Map<string, { level: number; reliability: number; reason: string }>();
     for (const question of payload.questions) {
-      response.run(randomUUID(), round.id, roundNumber === 1 ? question.id : null, question.prompt, JSON.stringify({ value: answerMap.get(question.id) }));
-      const item = evaluated.get(question.id)!;
-      insertEvidence.run(`${randomUUID()}:r${roundNumber}:${question.id}`, assessmentId, question.competencyId, roundNumber === 1 ? "fixed-assessment" : "ai-written", item.level, item.reliability, item.reason);
+      if (question.format === "single_choice") {
+        const option = question.options.find((item) => item.id === answerMap.get(question.id));
+        if (!option) throw new Error("Answer is not one of the stored choices");
+        // Codex P1: AI-authored choice retains ai-written provenance (0.8), not fixed 1
+        deterministic.set(question.id, { level: option.demonstratedLevel, reliability: EVIDENCE_RELIABILITY["ai-written"], reason: `Selected: ${option.text}` });
+      }
     }
-    db.prepare("UPDATE assessment_rounds SET status='completed',updated_at=CURRENT_TIMESTAMP WHERE id=?").run(round.id);
-  })();
+    const written = payload.questions.filter((question) => question.format === "short_text");
+    if (written.length > 0) {
+      const result = await aiService().evaluateWrittenAnswers({
+        assessmentSessionId: assessmentId, matrixVersionId: String(assessment.matrix_version_id),
+        answers: written.map((question) => ({ questionId: question.id, competencyId: question.competencyId, answer: answerMap.get(question.id)!, rubric: question.rubric, fallbackDemonstratedLevel: 2 })),
+      });
+      evaluated = new Map(result.data.evaluations.map((item) => [item.questionId, { level: item.demonstratedLevel, reliability: Math.min(0.8, Math.max(0.1, item.confidence ?? 0.6)), reason: item.evidenceSummary }]));
+    } else {
+      evaluated = new Map();
+    }
+    for (const [key, value] of deterministic) evaluated.set(key, value);
+  }
   const matrix = requirements(db, String(assessment.matrix_version_id));
-  const scored = scoreAssessment(matrix, assessmentEvidence(db, assessmentId));
+  // Build new evidence for in-memory scoring before DB write (atomicity C-AUD-01)
+  const newEvidenceForScoring: Evidence[] = payload.questions.map((question) => {
+    const item = evaluated.get(question.id)!;
+    return {
+      id: `${randomUUID()}:r${roundNumber}:${question.id}`,
+      competencyId: question.competencyId,
+      source: (roundNumber === 1 ? "fixed-assessment" : "ai-written") as Evidence["source"],
+      demonstratedLevel: item.level,
+      reliability: item.reliability,
+      reason: item.reason,
+      round: roundNumber,
+    };
+  });
+  const existingEvidence = assessmentEvidence(db, assessmentId);
+  const fullEvidence = [...existingEvidence, ...newEvidenceForScoring];
+  const scored = scoreAssessment(matrix, fullEvidence);
   if (!scored.ok) throw new Error(scored.error.message);
-  db.transaction(() => persistResults(db, assessmentId, scored.value))();
-  if (roundNumber === 1) await createAdaptiveRound(db, assessmentId, String(assessment.matrix_version_id), 2, matrix);
-  else if (roundNumber === 2 && scored.value.round3Required) {
+  // Pre-generate next round payload outside transaction (AI is async)
+  let nextRoundPayload: RoundPayload | null = null;
+  let nextRoundNumber: number | null = null;
+  if (roundNumber === 1) {
+    const count = Math.min(10, Math.max(7, matrix.length));
+    const fallback = fallbackQuestions(db, matrix, count, 2);
+    const rubricMap = rubrics(db, matrix.map((item) => item.competencyId));
+    const priorEvidence = fullEvidence.filter((e) => e.round !== null).map((e) => ({ competencyId: e.competencyId, summary: e.reason }));
+    const generated = await aiService().generateAdaptiveQuestions({
+      assessmentSessionId: assessmentId, matrixVersionId: String(assessment.matrix_version_id), requestedCount: count,
+      competencies: matrix.map((item) => ({ id: item.competencyId, targetLevel: item.requiredLevel, rubric: rubricMap.get(item.competencyId) ?? [] })),
+      priorEvidence, fallbackQuestions: fallback,
+    });
+    nextRoundPayload = { kind: "personalized", questions: toStored(generated.data.questions, matrix) };
+    nextRoundNumber = 2;
+  } else if (roundNumber === 2 && scored.value.round3Required) {
     const unresolved = scored.value.competencies
       .filter((item) => !item.supported || item.contradictory)
       .sort((a, b) => b.priority - a.priority)
@@ -226,11 +269,45 @@ async function submitRound(db: KaushalDatabase, assessmentId: string, answers: A
     const round3Matrix = matrix
       .filter((item) => unresolvedRank.has(item.competencyId))
       .sort((a, b) => unresolvedRank.get(a.competencyId)! - unresolvedRank.get(b.competencyId)!);
-    await createAdaptiveRound(db, assessmentId, String(assessment.matrix_version_id), 3, round3Matrix.length > 0 ? round3Matrix : matrix);
+    const finalMatrix = round3Matrix.length > 0 ? round3Matrix : matrix;
+    const count = Math.min(5, finalMatrix.length);
+    const fallback = fallbackQuestions(db, finalMatrix, count, 3);
+    const rubricMap = rubrics(db, finalMatrix.map((item) => item.competencyId));
+    const priorEvidence = fullEvidence.filter((e) => e.round !== null).map((e) => ({ competencyId: e.competencyId, summary: e.reason }));
+    const generated = await aiService().generateAdaptiveQuestions({
+      assessmentSessionId: assessmentId, matrixVersionId: String(assessment.matrix_version_id), requestedCount: count,
+      competencies: finalMatrix.map((item) => ({ id: item.competencyId, targetLevel: item.requiredLevel, rubric: rubricMap.get(item.competencyId) ?? [] })),
+      priorEvidence, fallbackQuestions: fallback,
+    });
+    nextRoundPayload = { kind: "clarification", questions: toStored(generated.data.questions, finalMatrix) };
+    nextRoundNumber = 3;
   }
-  else {
-    db.prepare("UPDATE assessments SET status=?,completed_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE id=?").run(roundNumber === 3 && scored.value.round3Required ? "provisional" : "completed", assessmentId);
-    new LearningService(db).createPath(assessmentId);
+  // Single atomic transaction for all writes (C-AUD-01 fixed)
+  db.transaction(() => {
+    const response = db.prepare("INSERT INTO responses(id,round_id,question_id,prompt_snapshot,response_json) VALUES (?,?,?,?,?)");
+    const insertEvidence = db.prepare("INSERT INTO evidence(id,assessment_id,competency_id,source_type,level,reliability,rationale) VALUES (?,?,?,?,?,?,?)");
+    for (let i = 0; i < payload.questions.length; i++) {
+      const question = payload.questions[i]!;
+      const newEv = newEvidenceForScoring[i]!;
+      response.run(randomUUID(), round.id, roundNumber === 1 ? question.id : null, question.prompt, JSON.stringify({ value: answerMap.get(question.id) }));
+      insertEvidence.run(newEv.id, assessmentId, newEv.competencyId, newEv.source, newEv.demonstratedLevel, newEv.reliability, newEv.reason);
+    }
+    db.prepare("UPDATE assessment_rounds SET status='completed',updated_at=CURRENT_TIMESTAMP WHERE id=?").run(round.id);
+    db.prepare("DELETE FROM assessment_results WHERE assessment_id=?").run(assessmentId);
+    const insertResult = db.prepare(`INSERT INTO assessment_results(id,assessment_id,competency_id,assessed_level,required_level,gap,priority,confidence,supported) VALUES (?,?,?,?,?,?,?,?,?)`);
+    for (const item of scored.value.competencies) {
+      insertResult.run(randomUUID(), assessmentId, item.competencyId, item.assessedLevel, item.requiredLevel, item.gap, item.priority, item.confidence, item.supported ? 1 : 0);
+    }
+    if (nextRoundPayload && nextRoundNumber) {
+      db.prepare("INSERT INTO assessment_rounds(id,assessment_id,round_number,kind,status) VALUES (?,?,?,?, 'pending')").run(randomUUID(), assessmentId, nextRoundNumber, JSON.stringify(nextRoundPayload));
+    } else {
+      db.prepare("UPDATE assessments SET status=?,completed_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE id=?").run(scored.value.round3Required && roundNumber === 3 ? "provisional" : "completed", assessmentId);
+    }
+  })();
+  if (!nextRoundPayload) {
+    try {
+      new LearningService(db).createPath(assessmentId);
+    } catch {}
   }
 }
 
@@ -247,7 +324,20 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json() as { action?: string; officialId?: string; assessmentId?: string; answers?: Answer[]; courseId?: string; competencyId?: string };
+    const rawBody: unknown = await request.json();
+    const bodySchema = z
+      .object({
+        action: z.string().optional(),
+        officialId: z.string().trim().min(1).max(64).optional(),
+        assessmentId: z.string().trim().min(1).max(64).optional(),
+        answers: z.array(answerSchema).max(10).optional(),
+        courseId: z.string().trim().min(1).optional(),
+        competencyId: z.string().trim().min(1).optional(),
+      })
+      .passthrough();
+    const parsedBody = bodySchema.safeParse(rawBody);
+    if (!parsedBody.success) return fail("Invalid request", 400);
+    const body = parsedBody.data as { action?: string; officialId?: string; assessmentId?: string; answers?: Answer[]; courseId?: string; competencyId?: string };
     const db = database();
     if (body.action === "start" || body.action === "reassess") {
       if (!body.officialId) return fail("officialId is required");
@@ -263,8 +353,10 @@ export async function POST(request: Request) {
     }
     if (body.action === "submit-round") {
       if (!body.assessmentId) return fail("assessmentId is required");
+      const parsedAnswers = z.array(answerSchema).max(10).safeParse(body.answers);
+      if (!parsedAnswers.success) return fail("Invalid answers", 400);
       await restoreAssessmentFromSnapshot(db, body.assessmentId);
-      await submitRound(db, body.assessmentId, body.answers ?? []);
+      await submitRound(db, body.assessmentId, parsedAnswers.data);
       await persistAssessmentSnapshot(db, body.assessmentId);
       return Response.json(session(db, body.assessmentId));
     }
@@ -277,6 +369,18 @@ export async function POST(request: Request) {
     }
     return fail("Unknown learner action");
   } catch (error) {
-    return fail(error instanceof Error ? error.message : "Unable to update learner session");
+    console.error("[learner/session] error", error);
+    const message = error instanceof Error ? error.message : "Unable to update learner session";
+    // Codex P2: return 4xx for safe client errors, 500 for internal
+    const safe =
+      message.startsWith("Answer ") ||
+      message.startsWith("Active assessment") ||
+      message.startsWith("No assessment") ||
+      message === "Invalid request" ||
+      message === "Invalid answers" ||
+      message.startsWith("Baseline question") ||
+      message.startsWith("A baseline") ||
+      message.startsWith("Answer is not");
+    return fail(safe ? message : "Unable to update learner session", safe ? 400 : 500);
   }
 }

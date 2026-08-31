@@ -3,18 +3,40 @@ import type { CatalogCourse, LearningPath, PriorityGap } from "./types";
 const normalize = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 const includesTag = (text: string, tag: string) => ` ${normalize(text)} `.includes(` ${normalize(tag)} `);
 
+// Handle plural "apis" vs singular "api" equivalently for catalog matching
+const isApiTag = (normalizedTag: string) => normalizedTag === "api" || normalizedTag === "apis";
+const matchesApiTag = (text: string) => includesTag(text, "api") || includesTag(text, "apis");
+
 function evidenceScore(course: CatalogCourse, tags: string[]): number {
   const normalizedTitle = normalize(course.title);
+  const detailText = `${course.tags.join(" ")} ${course.description} ${course.learningOutcomes.join(" ")}`;
   const specialistFalsePositive = tags.some((tag) => {
     const normalizedTag = normalize(tag);
-    if (normalizedTag === "sampling") return /\b(soil|water|air|mineral|geological|legal|borehole|base metal|ndps|environmental|exploration)\b/.test(normalizedTitle);
-    if (normalizedTag === "national accounts") return /\b(company|financial|pension|postal|partnership)\b/.test(normalizedTitle);
+    if (isApiTag(normalizedTag)) return false;
+    if (normalizedTag === "sampling") {
+      const pattern = /\b(soil|water|air|mineral|geological|legal|borehole|base metal|ndps|environmental|exploration)\b/;
+      // Codex P1: restrict to title only — detail check removed legitimate sampling course "Data Analysis using R"
+      return pattern.test(normalizedTitle);
+    }
+    if (normalizedTag === "national accounts") {
+      // Note: "national accounts" tag does not exist in current competency library / courseTags yet;
+      // filter is kept for future catalog coverage and prevents "company accounts" false matches
+      const pattern = /\b(company|financial|pension|postal|partnership)\b/;
+      return pattern.test(normalizedTitle);
+    }
     return false;
   });
   if (specialistFalsePositive) return 0;
-  const titleMatch = tags.some((tag) => includesTag(normalizedTitle, tag));
-  const detailText = `${course.tags.join(" ")} ${course.description} ${course.learningOutcomes.join(" ")}`;
-  const detailMatch = course.detailAvailable && tags.some((tag) => includesTag(detailText, tag));
+  const titleMatch = tags.some((tag) => {
+    const n = normalize(tag);
+    if (isApiTag(n)) return matchesApiTag(normalizedTitle);
+    return includesTag(normalizedTitle, tag);
+  });
+  const detailMatch = course.detailAvailable && tags.some((tag) => {
+    const n = normalize(tag);
+    if (isApiTag(n)) return matchesApiTag(detailText);
+    return includesTag(detailText, tag);
+  });
   if (!titleMatch && !detailMatch) return 0;
   return (detailMatch ? 100 : 0) + (titleMatch ? 20 : 0) + (course.detailAvailable ? 5 : 0);
 }

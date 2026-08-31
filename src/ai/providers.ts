@@ -90,18 +90,32 @@ export function createGroqAdapter(options: { apiKey?: string; model?: string; cl
     model,
     async execute(request) {
       if (!client) throw missingCredential("Groq");
-      const completion = await client.chat.completions.create({
-        model,
-        messages: [{ role: "user", content: request.prompt }],
-        response_format: {
-          type: "json_schema",
-          json_schema: { name: request.operation === "generate_adaptive_questions" ? "adaptive_questions" : "written_evaluations", strict: true, schema: schemaFor(request) },
-        },
-        reasoning_effort: "none",
-        temperature: 0.2,
-        max_tokens: outputLimitFor(request),
-        stream: false,
-      });
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(new DOMException("Provider attempt timed out", "TimeoutError")), request.timeoutMs);
+      let completion: GroqCompletion;
+      try {
+        completion = (await client.chat.completions.create(
+          {
+            model,
+            messages: [{ role: "user", content: request.prompt }],
+            response_format: {
+              type: "json_schema",
+              json_schema: {
+                name: request.operation === "generate_adaptive_questions" ? "adaptive_questions" : "written_evaluations",
+                strict: true,
+                schema: schemaFor(request),
+              },
+            },
+            reasoning_effort: "none",
+            temperature: 0.2,
+            max_tokens: outputLimitFor(request),
+            stream: false,
+          },
+          { signal: controller.signal } as Record<string, unknown>,
+        )) as GroqCompletion;
+      } finally {
+        clearTimeout(timeout);
+      }
       if (!("choices" in completion)) throw new AiContractError("schema_error", "Groq returned a non-completion response");
       const content = completion.choices[0]?.message.content;
       return {
