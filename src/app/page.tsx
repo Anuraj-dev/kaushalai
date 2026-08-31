@@ -1,16 +1,5 @@
+import Image from "next/image";
 import Link from "next/link";
-
-const flow = [
-  { number: "01", title: "Assess", body: "Start with a fixed baseline against the published role matrix." },
-  { number: "02", title: "Explain", body: "Answer focused questions and see how evidence supports each result." },
-  { number: "03", title: "Learn", body: "Get a course path tied to the gaps that matter most." },
-];
-
-const proofRows = [
-  { label: "Matrix", value: "Version 1", detail: "Pinned at assessment start" },
-  { label: "Evidence", value: "Every answer", detail: "Stored with its source and reliability" },
-  { label: "Outcome", value: "A clear next step", detail: "Recommendations follow verified gaps" },
-];
 
 export default function Home() {
   return <main id="main-content" className="landing">
@@ -20,8 +9,8 @@ export default function Home() {
       <div className="landing-actions"><Link className="button button-primary" href="/learner">Open official workspace <span aria-hidden="true">→</span></Link><Link className="button button-secondary" href="/admin">View administrator workspace</Link></div>
     </section>
 
-    <section className="workflow-preview" aria-labelledby="workflow-title">
-      <div className="section-heading section-heading-centered"><span className="tag">The evidence loop</span><h2 id="workflow-title">A competency picture you can follow.</h2><p>One continuous path from role requirements to a practical learning decision.</p></div>
+    <section className="workflow-preview workflow-preview-decorated" aria-labelledby="workflow-title">
+      <div className="workflow-top-art workflow-top-art-left" aria-hidden="true"><Image src="/landing/top-target.png" alt="" width={160} height={160} /></div><div className="workflow-top-art workflow-top-art-right" aria-hidden="true"><Image src="/landing/top-mountain.png" alt="" width={180} height={160} /></div><div className="section-heading section-heading-centered workflow-heading-decorated"><div className="workflow-heading-text"><h2 id="workflow-title">A competency picture you can follow.</h2><p>One continuous path from role requirements to a practical learning decision.</p></div></div>
       <div className="workflow-diagram" aria-label="Assessment, evidence, result, and learning path flow">
         <div className="workflow-node"><span className="node-index">01</span><strong>Published matrix</strong><small>Required level and importance</small></div>
         <span className="workflow-arrow" aria-hidden="true">→</span>
@@ -31,35 +20,21 @@ export default function Home() {
         <span className="workflow-arrow" aria-hidden="true">→</span>
         <div className="workflow-node workflow-node-lime"><span className="node-index">04</span><strong>Learning path</strong><small>Catalog-backed next actions</small></div>
       </div>
-      <div className="workflow-note"><span className="tag">Pinned versioning</span><p>Active assessments stay linked to the matrix version they started with, even when an administrator publishes an update.</p></div>
-    </section>
-
-    <section className="proof-section" aria-labelledby="proof-title">
-      <div className="section-heading"><span className="tag">What changes</span><h2 id="proof-title">From a difficult question to a useful answer.</h2><p>The interface keeps the reasoning visible, so a learner knows what to do and an administrator knows what changed.</p></div>
-      <div className="proof-grid">{flow.map((item) => <article className="proof-card" key={item.number}><span className="proof-number">{item.number}</span><h3>{item.title}</h3><p>{item.body}</p><span className="proof-line" aria-hidden="true"/></article>)}</div>
-    </section>
-
-    <section className="dark-evidence" aria-labelledby="evidence-title">
-      <div className="dark-evidence-copy"><span className="tag tag-dark">Evidence ledger</span><h2 id="evidence-title">The score is never a black box.</h2><p>Every result is grounded in a requirement, an answer, a reliability level, and a reason. The numbers stay close to the source.</p><Link className="button button-light" href="/learner">See the learner flow <span aria-hidden="true">→</span></Link></div>
-      <div className="evidence-ledger" aria-label="Example evidence ledger">
-        {proofRows.map((row, index) => <div className="ledger-row" key={row.label}><span className="ledger-index">0{index + 1}</span><div><span className="ledger-label">{row.label}</span><strong>{row.value}</strong><small>{row.detail}</small></div><span className="ledger-mark" aria-hidden="true">✓</span></div>)}
-      </div>
+      <div className="workflow-bottom-trail" aria-hidden="true"><div className="workflow-trail-line" /><div className="workflow-trail-items"><div className="workflow-trail-item"><Image src="/landing/bottom-books.png" alt="" width={160} height={130} /></div><div className="workflow-trail-item"><Image src="/landing/bottom-clipboard.png" alt="" width={160} height={130} /></div><div className="workflow-trail-item"><Image src="/landing/bottom-bridge.png" alt="" width={170} height={130} /></div><div className="workflow-trail-item"><Image src="/landing/bottom-signpost.png" alt="" width={150} height={130} /></div></div></div>
     </section>
 
     <section className="feature-section" aria-labelledby="feature-title">
-      <div className="section-heading section-heading-centered"><span className="tag">Built for the work</span><h2 id="feature-title">Every part, connected.</h2><p>Short screens, clear transitions, and the detail needed for a defensible decision.</p></div>
       <div className="feature-grid">
-        <article className="feature-card feature-card-wide"><div><span className="tag tag-lime">Official workspace</span><h3>Answer in rounds, not all at once.</h3><p>Start with a baseline, then move through personalized evidence and clarification only when the result needs more support.</p></div><div className="mini-stepper" aria-hidden="true"><span className="is-done">01</span><span className="is-current">02</span><span>03</span><span>04</span></div></article>
-        <article className="feature-card"><span className="tag">Administrator workspace</span><h3>Publish with a paper trail.</h3><p>Review coverage, edit a draft matrix, and publish an immutable version that future assessments can reference.</p><div className="mini-table" aria-hidden="true"><span/><span/><span/><span/></div></article>
-        <article className="feature-card"><span className="tag">Learning history</span><h3>Keep progress in context.</h3><p>Course completions add verified history without rewriting the assessment that came before.</p><div className="mini-bars" aria-hidden="true"><span/><span/><span/></div></article>
+        <article className="feature-card feature-card-wide"><div className="feature-card-copy"><span className="tag tag-lime">Official workspace</span><h3>Answer in rounds, not all at once.</h3><p>Start with a baseline, then move through personalized evidence and clarification only when the result needs more support.</p></div><div className="feature-wide-art" aria-hidden="true"><Image src="/landing/features/rounds-doc.png" alt="" width={360} height={220} className="feature-wide-doc" /><Image src="/landing/features/rounds-steps.png" alt="" width={360} height={152} className="feature-wide-steps" /><Image src="/landing/features/rounds-arc.png" alt="" width={220} height={132} className="feature-wide-arc" /></div></article>
+        <article className="feature-card feature-card-admin"><span className="tag">Administrator workspace</span><h3>Publish with a paper trail.</h3><p>Review coverage, edit a draft matrix, and publish an immutable version that future assessments can reference.</p><div className="feature-admin-art" aria-hidden="true"><Image src="/landing/features/admin-papers.png" alt="" width={340} height={237} /></div><div className="mini-table" aria-hidden="true"><span/><span/><span/><span/></div></article>
+        <article className="feature-card feature-card-learning"><span className="tag">Learning history</span><h3>Keep progress in context.</h3><p>Course completions add verified history without rewriting the assessment that came before.</p><div className="feature-learning-art" aria-hidden="true"><Image src="/landing/features/learning-full.png" alt="" width={560} height={242} className="learning-timeline-img" /></div><div className="feature-learning-bars" aria-hidden="true"><div className="mini-bars"><span /><span /><span /></div></div></article>
       </div>
     </section>
 
     <section className="lime-band" aria-labelledby="next-step-title">
-      <div className="section-heading section-heading-centered"><span className="tag tag-ink">One connected practice</span><h2 id="next-step-title">Evidence in. A defensible next step out.</h2><p>Walk the seeded demo from assessment to recommendation, then open the administrator view to see the organization-level picture.</p></div>
-      <div className="lime-actions"><Link className="button button-dark" href="/learner">Start an assessment <span aria-hidden="true">→</span></Link><Link className="button button-white" href="/admin">Open administrator view</Link></div>
+      <div className="section-heading section-heading-centered"><h2 id="next-step-title">Competency made visible.<br />Next steps made clear.</h2><p>From published matrix to supported gaps to catalog-backed learning, every recommendation traces back to demonstrated evidence.</p></div>
     </section>
 
-    <footer className="landing-footer"><div><span className="brand-mark brand-mark-light" aria-hidden="true"><span/></span><strong>Kaushal AI</strong></div><p>Evidence-based competency practice for public officials.</p><div className="footer-links"><Link href="/learner">Official workspace</Link><Link href="/admin">Administrator workspace</Link></div></footer>
+    <footer className="landing-footer"><div className="footer-brand"><div className="footer-brand-row"><span className="brand-mark brand-mark-light" aria-hidden="true"><img src="/kaushal-logo.svg" alt="" width={22} height={22} style={{ width: 22, height: 22, objectFit: "contain" }} /></span><strong>Kaushal AI</strong></div><p>Evidence-based competency practice for public officials.</p></div><nav className="footer-nav" aria-label="Footer"><a href="#workflow-title">How it works</a><Link href="/privacy">Privacy</Link><Link href="/terms">Terms</Link><a href="https://github.com/Anuraj-dev/kaushalai" target="_blank" rel="noreferrer">GitHub</a></nav><div className="footer-bottom"><small>© 2026 Kaushal AI</small></div></footer>
   </main>;
 }
