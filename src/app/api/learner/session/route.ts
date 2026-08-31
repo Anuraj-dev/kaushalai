@@ -7,6 +7,7 @@ import {
 } from "@/ai";
 import { repositories } from "@/data";
 import { getDatabase, type KaushalDatabase } from "@/db/client";
+import { persistAssessmentSnapshot, restoreAssessmentFromSnapshot } from "@/db/assessment-snapshot-store";
 import { EVIDENCE_RELIABILITY, scoreAssessment, type AssessmentResult, type CompetencyRequirement, type Evidence } from "@/domain/assessment";
 import { LearningService } from "@/services/learning-service";
 
@@ -239,6 +240,7 @@ export async function GET(request: Request) {
   let assessmentId = query.get("assessmentId");
   if (!assessmentId && query.get("officialId")) assessmentId = (await repositories(db).assessments.latestForOfficial(query.get("officialId")!))?.id ?? null;
   if (!assessmentId) return fail("No assessment found", 404);
+  await restoreAssessmentFromSnapshot(db, assessmentId);
   const value = session(db, assessmentId);
   return value ? Response.json(value) : fail("Assessment not found", 404);
 }
@@ -256,16 +258,21 @@ export async function POST(request: Request) {
       const matrix = requirements(db, started.matrixVersionId);
       const payload: RoundPayload = { kind: "baseline", questions: baselineQuestions(db, matrix) };
       db.prepare("INSERT INTO assessment_rounds(id,assessment_id,round_number,kind,status) VALUES (?,?,1,?,'pending')").run(randomUUID(), started.id, JSON.stringify(payload));
+      await persistAssessmentSnapshot(db, started.id);
       return Response.json(session(db, started.id), { status: 201 });
     }
     if (body.action === "submit-round") {
       if (!body.assessmentId) return fail("assessmentId is required");
+      await restoreAssessmentFromSnapshot(db, body.assessmentId);
       await submitRound(db, body.assessmentId, body.answers ?? []);
+      await persistAssessmentSnapshot(db, body.assessmentId);
       return Response.json(session(db, body.assessmentId));
     }
     if (body.action === "complete-course") {
       if (!body.officialId || !body.courseId || !body.competencyId || !body.assessmentId) return fail("Completion identifiers are required");
+      await restoreAssessmentFromSnapshot(db, body.assessmentId);
       new LearningService(db).completeCourse({ officialId: body.officialId, courseId: body.courseId, competencyId: body.competencyId });
+      await persistAssessmentSnapshot(db, body.assessmentId);
       return Response.json(session(db, body.assessmentId), { status: 201 });
     }
     return fail("Unknown learner action");
