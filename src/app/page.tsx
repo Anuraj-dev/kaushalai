@@ -15,7 +15,7 @@ const proofRows = [
 export default function Home() {
   return <main id="main-content" className="landing">
     <section className="landing-hero" aria-labelledby="landing-title">
-      <h1 id="landing-title">Make the next learning step <span>defensible.</span></h1>
+      <h1 id="landing-title">Find what to learn to meet your role</h1>
       <p className="landing-lede">Kaushal AI turns demonstrated competency evidence into a clear, explainable learning path for public officials.</p>
       <div className="hero-tags" aria-label="Connected workflow">
         <span className="tag">Assessment</span><span className="tag">Evidence</span><span className="tag">Learning history</span><span className="tag">Recommendations</span>
