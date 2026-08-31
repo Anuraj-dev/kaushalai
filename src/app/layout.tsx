@@ -2,7 +2,18 @@ import type { Metadata, Viewport } from "next";
 import { AppNavigation } from "@/components/ui/app-navigation";
 import "./globals.css";
 
-export const metadata: Metadata = { title: "Kaushal AI", description: "Evidence-based competency assessment" };
+export const metadata: Metadata = {
+  title: "Kaushal AI",
+  description: "Evidence-based competency assessment",
+  icons: {
+    icon: [
+      { url: "/favicon-16.png", sizes: "16x16", type: "image/png" },
+      { url: "/favicon-32.png", sizes: "32x32", type: "image/png" },
+      { url: "/kaushal-logo.svg", type: "image/svg+xml" },
+    ],
+    apple: [{ url: "/favicon-180.png", sizes: "180x180", type: "image/png" }],
+  },
+};
 export const viewport: Viewport = { width: "device-width", initialScale: 1 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

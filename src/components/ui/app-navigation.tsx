@@ -7,9 +7,8 @@ export function AppNavigation() {
   return (
     <header className="site-nav">
       <Link className="brand" href="/" aria-label="Kaushal AI home">
-        <span className="brand-mark" aria-hidden="true">
-          <span />
-        </span>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/kaushal-logo.svg" alt="" aria-hidden="true" width={28} height={30} className="brand-mark-img" />
         <span className="brand-copy">
           <strong>Kaushal AI</strong>
         </span>
