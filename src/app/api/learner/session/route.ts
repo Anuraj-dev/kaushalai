@@ -100,6 +100,8 @@ function aiService() {
   return createAiAssessmentService({ ...adapters, logger: (event) => console.warn(JSON.stringify(event)) });
 }
 
+// Legacy helper kept for reference — now inlined in submitRound for single-txn atomicity (C-AUD-01)
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 async function createAdaptiveRound(db: KaushalDatabase, assessmentId: string, versionId: string, round: 2 | 3, matrix: CompetencyRequirement[]) {
   const count = round === 2 ? Math.min(10, Math.max(7, matrix.length)) : Math.min(5, matrix.length);
   const fallback = fallbackQuestions(db, matrix, count, round);
@@ -131,6 +133,7 @@ function assessmentEvidence(db: KaushalDatabase, assessmentId: string): Evidence
   return [...current, ...history];
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function persistResults(db: KaushalDatabase, assessmentId: string, result: AssessmentResult) {
   db.prepare("DELETE FROM assessment_results WHERE assessment_id=?").run(assessmentId);
   const insert = db.prepare(`INSERT INTO assessment_results(id,assessment_id,competency_id,assessed_level,required_level,gap,priority,confidence,supported)
@@ -223,24 +226,40 @@ async function submitRound(db: KaushalDatabase, assessmentId: string, answers: A
     }
     for (const [key, value] of deterministic) evaluated.set(key, value);
   }
-  // NOTE: Known split transaction atomicity (C-AUD-01) — kept as-is per F1 scope; do not merge without product review
-  db.transaction(() => {
-    const response = db.prepare("INSERT INTO responses(id,round_id,question_id,prompt_snapshot,response_json) VALUES (?,?,?,?,?)");
-    const insertEvidence = db.prepare("INSERT INTO evidence(id,assessment_id,competency_id,source_type,level,reliability,rationale) VALUES (?,?,?,?,?,?,?)");
-    for (const question of payload.questions) {
-      response.run(randomUUID(), round.id, roundNumber === 1 ? question.id : null, question.prompt, JSON.stringify({ value: answerMap.get(question.id) }));
-      const item = evaluated.get(question.id)!;
-      insertEvidence.run(`${randomUUID()}:r${roundNumber}:${question.id}`, assessmentId, question.competencyId, roundNumber === 1 ? "fixed-assessment" : "ai-written", item.level, item.reliability, item.reason);
-    }
-    db.prepare("UPDATE assessment_rounds SET status='completed',updated_at=CURRENT_TIMESTAMP WHERE id=?").run(round.id);
-  })();
   const matrix = requirements(db, String(assessment.matrix_version_id));
-  const scored = scoreAssessment(matrix, assessmentEvidence(db, assessmentId));
+  // Build new evidence for in-memory scoring before DB write (atomicity C-AUD-01)
+  const newEvidenceForScoring: Evidence[] = payload.questions.map((question) => {
+    const item = evaluated.get(question.id)!;
+    return {
+      id: `${randomUUID()}:r${roundNumber}:${question.id}`,
+      competencyId: question.competencyId,
+      source: (roundNumber === 1 ? "fixed-assessment" : "ai-written") as Evidence["source"],
+      demonstratedLevel: item.level,
+      reliability: item.reliability,
+      reason: item.reason,
+      round: roundNumber,
+    };
+  });
+  const existingEvidence = assessmentEvidence(db, assessmentId);
+  const fullEvidence = [...existingEvidence, ...newEvidenceForScoring];
+  const scored = scoreAssessment(matrix, fullEvidence);
   if (!scored.ok) throw new Error(scored.error.message);
-  // NOTE: Split transaction (C-AUD-01) — persistResults in separate txn, kept as-is per F1 scope
-  db.transaction(() => persistResults(db, assessmentId, scored.value))();
-  if (roundNumber === 1) await createAdaptiveRound(db, assessmentId, String(assessment.matrix_version_id), 2, matrix);
-  else if (roundNumber === 2 && scored.value.round3Required) {
+  // Pre-generate next round payload outside transaction (AI is async)
+  let nextRoundPayload: RoundPayload | null = null;
+  let nextRoundNumber: number | null = null;
+  if (roundNumber === 1) {
+    const count = Math.min(10, Math.max(7, matrix.length));
+    const fallback = fallbackQuestions(db, matrix, count, 2);
+    const rubricMap = rubrics(db, matrix.map((item) => item.competencyId));
+    const priorEvidence = fullEvidence.filter((e) => e.round !== null).map((e) => ({ competencyId: e.competencyId, summary: e.reason }));
+    const generated = await aiService().generateAdaptiveQuestions({
+      assessmentSessionId: assessmentId, matrixVersionId: String(assessment.matrix_version_id), requestedCount: count,
+      competencies: matrix.map((item) => ({ id: item.competencyId, targetLevel: item.requiredLevel, rubric: rubricMap.get(item.competencyId) ?? [] })),
+      priorEvidence, fallbackQuestions: fallback,
+    });
+    nextRoundPayload = { kind: "personalized", questions: toStored(generated.data.questions, matrix) };
+    nextRoundNumber = 2;
+  } else if (roundNumber === 2 && scored.value.round3Required) {
     const unresolved = scored.value.competencies
       .filter((item) => !item.supported || item.contradictory)
       .sort((a, b) => b.priority - a.priority)
@@ -249,11 +268,45 @@ async function submitRound(db: KaushalDatabase, assessmentId: string, answers: A
     const round3Matrix = matrix
       .filter((item) => unresolvedRank.has(item.competencyId))
       .sort((a, b) => unresolvedRank.get(a.competencyId)! - unresolvedRank.get(b.competencyId)!);
-    await createAdaptiveRound(db, assessmentId, String(assessment.matrix_version_id), 3, round3Matrix.length > 0 ? round3Matrix : matrix);
+    const finalMatrix = round3Matrix.length > 0 ? round3Matrix : matrix;
+    const count = Math.min(5, finalMatrix.length);
+    const fallback = fallbackQuestions(db, finalMatrix, count, 3);
+    const rubricMap = rubrics(db, finalMatrix.map((item) => item.competencyId));
+    const priorEvidence = fullEvidence.filter((e) => e.round !== null).map((e) => ({ competencyId: e.competencyId, summary: e.reason }));
+    const generated = await aiService().generateAdaptiveQuestions({
+      assessmentSessionId: assessmentId, matrixVersionId: String(assessment.matrix_version_id), requestedCount: count,
+      competencies: finalMatrix.map((item) => ({ id: item.competencyId, targetLevel: item.requiredLevel, rubric: rubricMap.get(item.competencyId) ?? [] })),
+      priorEvidence, fallbackQuestions: fallback,
+    });
+    nextRoundPayload = { kind: "clarification", questions: toStored(generated.data.questions, finalMatrix) };
+    nextRoundNumber = 3;
   }
-  else {
-    db.prepare("UPDATE assessments SET status=?,completed_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE id=?").run(roundNumber === 3 && scored.value.round3Required ? "provisional" : "completed", assessmentId);
-    new LearningService(db).createPath(assessmentId);
+  // Single atomic transaction for all writes (C-AUD-01 fixed)
+  db.transaction(() => {
+    const response = db.prepare("INSERT INTO responses(id,round_id,question_id,prompt_snapshot,response_json) VALUES (?,?,?,?,?)");
+    const insertEvidence = db.prepare("INSERT INTO evidence(id,assessment_id,competency_id,source_type,level,reliability,rationale) VALUES (?,?,?,?,?,?,?)");
+    for (let i = 0; i < payload.questions.length; i++) {
+      const question = payload.questions[i]!;
+      const newEv = newEvidenceForScoring[i]!;
+      response.run(randomUUID(), round.id, roundNumber === 1 ? question.id : null, question.prompt, JSON.stringify({ value: answerMap.get(question.id) }));
+      insertEvidence.run(newEv.id, assessmentId, newEv.competencyId, newEv.source, newEv.demonstratedLevel, newEv.reliability, newEv.reason);
+    }
+    db.prepare("UPDATE assessment_rounds SET status='completed',updated_at=CURRENT_TIMESTAMP WHERE id=?").run(round.id);
+    db.prepare("DELETE FROM assessment_results WHERE assessment_id=?").run(assessmentId);
+    const insertResult = db.prepare(`INSERT INTO assessment_results(id,assessment_id,competency_id,assessed_level,required_level,gap,priority,confidence,supported) VALUES (?,?,?,?,?,?,?,?,?)`);
+    for (const item of scored.value.competencies) {
+      insertResult.run(randomUUID(), assessmentId, item.competencyId, item.assessedLevel, item.requiredLevel, item.gap, item.priority, item.confidence, item.supported ? 1 : 0);
+    }
+    if (nextRoundPayload && nextRoundNumber) {
+      db.prepare("INSERT INTO assessment_rounds(id,assessment_id,round_number,kind,status) VALUES (?,?,?,?, 'pending')").run(randomUUID(), assessmentId, nextRoundNumber, JSON.stringify(nextRoundPayload));
+    } else {
+      db.prepare("UPDATE assessments SET status=?,completed_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE id=?").run(scored.value.round3Required && roundNumber === 3 ? "provisional" : "completed", assessmentId);
+    }
+  })();
+  if (!nextRoundPayload) {
+    try {
+      new LearningService(db).createPath(assessmentId);
+    } catch {}
   }
 }
 
