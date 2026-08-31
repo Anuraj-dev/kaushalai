@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Button } from "@/components/ui/button";
 
 const flow = [
   { number: "01", title: "Assess", body: "Start with a fixed baseline against the published role matrix." },
@@ -20,7 +21,7 @@ export default function Home() {
       <div className="hero-tags" aria-label="Connected workflow">
         <span className="tag">Assessment</span><span className="tag">Evidence</span><span className="tag">Learning history</span><span className="tag">Recommendations</span>
       </div>
-      <div className="landing-actions"><Link className="button button-primary" href="/learner">Open official workspace <span aria-hidden="true">→</span></Link><Link className="button button-secondary" href="/admin">View administrator workspace</Link></div>
+      <div className="landing-actions"><Button asChild variant="primary"><Link href="/learner">Open official workspace <span aria-hidden="true">→</span></Link></Button><Button asChild variant="secondary"><Link href="/admin">View administrator workspace</Link></Button></div>
     </section>
 
     <section className="workflow-preview" aria-labelledby="workflow-title">
@@ -43,7 +44,7 @@ export default function Home() {
     </section>
 
     <section className="dark-evidence" aria-labelledby="evidence-title">
-      <div className="dark-evidence-copy"><span className="tag tag-dark">Evidence ledger</span><h2 id="evidence-title">The score is never a black box.</h2><p>Every result is grounded in a requirement, an answer, a reliability level, and a reason. The numbers stay close to the source.</p><Link className="button button-light" href="/learner">See the learner flow <span aria-hidden="true">→</span></Link></div>
+      <div className="dark-evidence-copy"><span className="tag tag-dark">Evidence ledger</span><h2 id="evidence-title">The score is never a black box.</h2><p>Every result is grounded in a requirement, an answer, a reliability level, and a reason. The numbers stay close to the source.</p><Button asChild variant="light"><Link href="/learner">See the learner flow <span aria-hidden="true">→</span></Link></Button></div>
       <div className="evidence-ledger" aria-label="Example evidence ledger">
         {proofRows.map((row, index) => <div className="ledger-row" key={row.label}><span className="ledger-index">0{index + 1}</span><div><span className="ledger-label">{row.label}</span><strong>{row.value}</strong><small>{row.detail}</small></div><span className="ledger-mark" aria-hidden="true">✓</span></div>)}
       </div>
@@ -60,7 +61,7 @@ export default function Home() {
 
     <section className="lime-band" aria-labelledby="next-step-title">
       <div className="section-heading section-heading-centered"><span className="tag tag-ink">One connected practice</span><h2 id="next-step-title">Evidence in. A defensible next step out.</h2><p>Walk the seeded demo from assessment to recommendation, then open the administrator view to see the organization-level picture.</p></div>
-      <div className="lime-actions"><Link className="button button-dark" href="/learner">Start an assessment <span aria-hidden="true">→</span></Link><Link className="button button-white" href="/admin">Open administrator view</Link></div>
+      <div className="lime-actions"><Button asChild variant="dark"><Link href="/learner">Start an assessment <span aria-hidden="true">→</span></Link></Button><Button asChild variant="light"><Link href="/admin">Open administrator view</Link></Button></div>
     </section>
 
     <footer className="landing-footer"><div><span className="brand-mark brand-mark-light" aria-hidden="true"><span/></span><strong>Kaushal AI</strong></div><p>Evidence-based competency practice for public officials.</p><div className="footer-links"><Link href="/learner">Official workspace</Link><Link href="/admin">Administrator workspace</Link></div></footer>

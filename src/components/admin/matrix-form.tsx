@@ -1,5 +1,6 @@
 import type { AdminMatrixDetail } from "@/data/admin-repository";
 import { publishMatrix, saveMatrix } from "@/app/admin/actions";
+import { Button } from "@/components/ui/button";
 
 export function MatrixForm({ matrix }: { matrix: AdminMatrixDetail }) {
   const selected = new Map(matrix.competencies.map((item) => [item.id, item]));
@@ -14,6 +15,6 @@ export function MatrixForm({ matrix }: { matrix: AdminMatrixDetail }) {
         <label>Importance <select name={`importance:${competency.id}`} defaultValue={current?.importance ?? 2}>{[1,2,3].map((level) => <option key={level}>{level}</option>)}</select></label>
       </div>; })}
     </fieldset>
-    {editable && <div className="admin-actions"><button type="submit">Save draft</button><button formAction={publishMatrix}>Publish version</button></div>}
+    {editable && <div className="admin-actions"><Button variant="secondary" type="submit">Save draft</Button><Button variant="dark" formAction={publishMatrix}>Publish version</Button></div>}
   </form>;
 }

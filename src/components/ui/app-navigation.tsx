@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { Button } from "@/components/ui/button";
 
 export function AppNavigation() {
   return (
@@ -14,9 +15,11 @@ export function AppNavigation() {
         </span>
       </Link>
       <div className="nav-actions">
-        <Link className="nav-cta" href="/learner">
-          Start assessment <span aria-hidden="true">→</span>
-        </Link>
+        <Button asChild className="nav-cta" size="sm" variant="primary">
+          <Link href="/learner">
+            Start assessment <span aria-hidden="true">→</span>
+          </Link>
+        </Button>
       </div>
     </header>
   );
