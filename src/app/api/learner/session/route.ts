@@ -230,10 +230,11 @@ async function submitRound(db: KaushalDatabase, assessmentId: string, answers: A
   // Build new evidence for in-memory scoring before DB write (atomicity C-AUD-01)
   const newEvidenceForScoring: Evidence[] = payload.questions.map((question) => {
     const item = evaluated.get(question.id)!;
+    const isDeterministicChoice = question.format === "single_choice";
     return {
       id: `${randomUUID()}:r${roundNumber}:${question.id}`,
       competencyId: question.competencyId,
-      source: (roundNumber === 1 ? "fixed-assessment" : "ai-written") as Evidence["source"],
+      source: (isDeterministicChoice || roundNumber === 1 ? "fixed-assessment" : "ai-written") as Evidence["source"],
       demonstratedLevel: item.level,
       reliability: item.reliability,
       reason: item.reason,
