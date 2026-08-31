@@ -17,9 +17,6 @@ export default function Home() {
     <section className="landing-hero" aria-labelledby="landing-title">
       <h1 id="landing-title">Find what to learn to meet your role</h1>
       <p className="landing-lede">Kaushal AI turns demonstrated competency evidence into a clear, explainable learning path for public officials.</p>
-      <div className="hero-tags" aria-label="Connected workflow">
-        <span className="tag">Assessment</span><span className="tag">Evidence</span><span className="tag">Learning history</span><span className="tag">Recommendations</span>
-      </div>
       <div className="landing-actions"><Link className="button button-primary" href="/learner">Open official workspace <span aria-hidden="true">→</span></Link><Link className="button button-secondary" href="/admin">View administrator workspace</Link></div>
     </section>
 
