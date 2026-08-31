@@ -51,7 +51,8 @@ export class LearningService {
         "SELECT assessed_level FROM assessment_results r JOIN assessments a ON a.id=r.assessment_id WHERE a.official_id=? AND r.competency_id=? ORDER BY a.started_at DESC LIMIT 1",
       )
       .get(input.officialId, input.competencyId) as { assessed_level: number } | undefined;
-    let isDuplicate = false;
+    let isDuplicateHistory = false;
+    let effectiveCompletionId = completionId;
     this.database.transaction(() => {
       const result = this.database
         .prepare(
@@ -59,7 +60,21 @@ export class LearningService {
         )
         .run(completionId, input.officialId, input.courseId, input.verifiedAssessment ? input.level ?? 1 : null);
       if (result.changes === 0) {
-        isDuplicate = true;
+        const existing = this.database.prepare("SELECT id FROM course_completions WHERE official_id=? AND course_id=?").get(input.officialId, input.courseId) as
+          | { id: string }
+          | undefined;
+        if (existing) effectiveCompletionId = existing.id;
+        const existingHistory = this.database
+          .prepare("SELECT id FROM learning_history WHERE official_id=? AND source_id=? AND competency_id=?")
+          .get(input.officialId, effectiveCompletionId, input.competencyId) as { id: string } | undefined;
+        if (existingHistory) {
+          isDuplicateHistory = true;
+          return;
+        }
+        // Reuse existing completion for new competency gap (Codex P2)
+        this.database
+          .prepare("INSERT INTO learning_history(id,official_id,competency_id,source_type,source_id,level,reliability) VALUES (?,?,?,?,?,?,?)")
+          .run(this.id(), input.officialId, input.competencyId, sourceType, effectiveCompletionId, input.level ?? 1, reliability);
         return;
       }
       this.database
@@ -69,13 +84,10 @@ export class LearningService {
         .prepare("INSERT INTO reassessment_invitations(id,official_id,reason,source_id) VALUES (?,?,?,?)")
         .run(this.id(), input.officialId, "course_completion", completionId);
     })();
-    if (isDuplicate) {
-      const existing = this.database.prepare("SELECT id FROM course_completions WHERE official_id=? AND course_id=?").get(input.officialId, input.courseId) as
-        | { id: string }
-        | undefined;
-      return { completionId: existing?.id ?? completionId, reliability, reassessmentInvited: true, proficiencyChanged: false };
+    if (isDuplicateHistory) {
+      return { completionId: effectiveCompletionId, reliability, reassessmentInvited: true, proficiencyChanged: false };
     }
     const after = this.database.prepare("SELECT assessed_level FROM assessment_results r JOIN assessments a ON a.id=r.assessment_id WHERE a.official_id=? AND r.competency_id=? ORDER BY a.started_at DESC LIMIT 1").get(input.officialId, input.competencyId) as { assessed_level: number } | undefined;
-    return { completionId, reliability, reassessmentInvited: true, proficiencyChanged: before?.assessed_level !== after?.assessed_level };
+    return { completionId: effectiveCompletionId, reliability, reassessmentInvited: true, proficiencyChanged: before?.assessed_level !== after?.assessed_level };
   }
 }
