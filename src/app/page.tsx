@@ -21,7 +21,6 @@ export default function Home() {
         <span className="tag">Assessment</span><span className="tag">Evidence</span><span className="tag">Learning history</span><span className="tag">Recommendations</span>
       </div>
       <div className="landing-actions"><Link className="button button-primary" href="/learner">Open official workspace <span aria-hidden="true">→</span></Link><Link className="button button-secondary" href="/admin">View administrator workspace</Link></div>
-      <p className="hero-note"><span className="status-dot"/> Seeded demo data · no sign-in required</p>
     </section>
 
     <section className="workflow-preview" aria-labelledby="workflow-title">
