@@ -20,20 +20,19 @@ const matchesApiTag = (text: string) => includesTag(text, "api") || includesTag(
 function evidenceScore(course: CatalogCourse, tags: string[]): number {
   const normalizedTitle = normalize(course.title);
   const detailText = `${course.tags.join(" ")} ${course.description} ${course.learningOutcomes.join(" ")}`;
-  const normalizedDetail = normalize(detailText);
   const specialistFalsePositive = tags.some((tag) => {
     const normalizedTag = normalize(tag);
     if (isApiTag(normalizedTag)) return false;
     if (normalizedTag === "sampling") {
       const pattern = /\b(soil|water|air|mineral|geological|legal|borehole|base metal|ndps|environmental|exploration)\b/;
-      // Check both title and detailText to avoid false positives from catalog detail
-      return pattern.test(normalizedTitle) || pattern.test(normalizedDetail);
+      // Codex P1: restrict to title only — detail check removed legitimate sampling course "Data Analysis using R"
+      return pattern.test(normalizedTitle);
     }
     if (normalizedTag === "national accounts") {
       // Note: "national accounts" tag does not exist in current competency library / courseTags yet;
       // filter is kept for future catalog coverage and prevents "company accounts" false matches
       const pattern = /\b(company|financial|pension|postal|partnership)\b/;
-      return pattern.test(normalizedTitle) || pattern.test(normalizedDetail);
+      return pattern.test(normalizedTitle);
     }
     return false;
   });

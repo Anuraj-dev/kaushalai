@@ -168,14 +168,14 @@ export function validateWrittenEvaluations(value: unknown, request: EvaluateWrit
     const evidenceSummaryWords = evidenceWords(evaluation.evidenceSummary);
     if (evidenceSummaryWords.size > 0) {
       const overlap = [...evidenceSummaryWords].filter((w) => answerWords.has(w)).length;
-      const required = Math.max(2, Math.ceil(evidenceSummaryWords.size * 0.4));
+      const required = Math.min(evidenceSummaryWords.size, Math.max(1, Math.ceil(evidenceSummaryWords.size * 0.4)));
       if (overlap < required) throw new AiContractError("semantic_error", "Evaluation claims evidence outside the written answer");
     }
     const rubricSourceWords = evidenceWords(`${answer.answer} ${answer.rubric.map((entry) => entry.criterion).join(" ")}`);
     const rubricReasonWords = evidenceWords(evaluation.rubricReason);
     if (rubricReasonWords.size > 0) {
       const overlap = [...rubricReasonWords].filter((w) => rubricSourceWords.has(w)).length;
-      const required = Math.max(2, Math.ceil(rubricReasonWords.size * 0.4));
+      const required = Math.min(rubricReasonWords.size, Math.max(1, Math.ceil(rubricReasonWords.size * 0.4)));
       if (overlap < required) throw new AiContractError("semantic_error", "Evaluation reason is not grounded in the answer or rubric");
     }
   }

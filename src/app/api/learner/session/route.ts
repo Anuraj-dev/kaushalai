@@ -224,7 +224,8 @@ async function submitRound(db: KaushalDatabase, assessmentId: string, answers: A
       if (question.format === "single_choice") {
         const option = question.options.find((item) => item.id === answerMap.get(question.id));
         if (!option) throw new Error("Answer is not one of the stored choices");
-        deterministic.set(question.id, { level: option.demonstratedLevel, reliability: EVIDENCE_RELIABILITY["fixed-assessment"], reason: `Selected: ${option.text}` });
+        // Codex P1: AI-authored choice retains ai-written provenance (0.8), not fixed 1
+        deterministic.set(question.id, { level: option.demonstratedLevel, reliability: EVIDENCE_RELIABILITY["ai-written"], reason: `Selected: ${option.text}` });
       }
     }
     const written = payload.questions.filter((question) => question.format === "short_text");
@@ -243,11 +244,10 @@ async function submitRound(db: KaushalDatabase, assessmentId: string, answers: A
   // Build new evidence for in-memory scoring before DB write (atomicity C-AUD-01)
   const newEvidenceForScoring: Evidence[] = payload.questions.map((question) => {
     const item = evaluated.get(question.id)!;
-    const isDeterministicChoice = question.format === "single_choice";
     return {
       id: `${randomUUID()}:r${roundNumber}:${question.id}`,
       competencyId: question.competencyId,
-      source: (isDeterministicChoice || roundNumber === 1 ? "fixed-assessment" : "ai-written") as Evidence["source"],
+      source: (roundNumber === 1 ? "fixed-assessment" : "ai-written") as Evidence["source"],
       demonstratedLevel: item.level,
       reliability: item.reliability,
       reason: item.reason,
@@ -384,7 +384,7 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error("[learner/session] error", error);
     const message = error instanceof Error ? error.message : "Unable to update learner session";
-    // Sanitize: only expose known safe messages, else generic
+    // Codex P2: return 4xx for safe client errors, 500 for internal
     const safe =
       message.startsWith("Answer ") ||
       message.startsWith("Active assessment") ||
@@ -394,6 +394,6 @@ export async function POST(request: Request) {
       message.startsWith("Baseline question") ||
       message.startsWith("A baseline") ||
       message.startsWith("Answer is not");
-    return fail(safe ? message : "Unable to update learner session", 500);
+    return fail(safe ? message : "Unable to update learner session", safe ? 400 : 500);
   }
 }
