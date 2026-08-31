@@ -30,8 +30,8 @@
 }
 
 * { box-sizing: border-box; }
-html { background: var(--canvas); scroll-behavior: smooth; }
-body { margin: 0; background: var(--canvas); color: var(--ink); font-family: var(--font-sans); font-size: 15px; line-height: 1.5; }
+html { background: var(--paper); scroll-behavior: smooth; overflow-x: clip; }
+body { margin: 0 auto; background: var(--paper); color: var(--ink); font-family: var(--font-sans); font-size: 15px; line-height: 1.5; transform: scale(1.5); transform-origin: top center; width: 66.666%; min-height: 66.666vh; }
 ::selection { background: var(--lime); color: var(--ink); }
 a { color: inherit; }
 button, a, select, input, textarea { font: inherit; }
@@ -43,10 +43,10 @@ button:disabled { cursor: not-allowed; }
 .skip-link { position: fixed; z-index: 10; top: 8px; left: 8px; padding: 10px 14px; border: 1px solid var(--ink); border-radius: var(--radius-xs); background: var(--lime); color: var(--ink); font-size: 12px; font-weight: 700; transform: translateY(-160%); transition: transform 140ms ease; }
 .skip-link:focus { transform: translateY(0); }
 
-.site-frame { width: min(1320px, 100%); min-height: 100vh; margin: 0 auto; overflow: clip; background: var(--paper); box-shadow: 0 0 42px rgb(14 14 14 / 7%); }
+.site-frame { width: 100%; min-height: 100vh; margin: 0; overflow: clip; background: var(--paper); }
 .content-frame { min-width: 0; }
 
-.site-nav { position: relative; z-index: 2; display: flex; width: min(calc(100% - 48px), 1140px); min-height: 52px; align-items: center; gap: 24px; margin: 24px auto 0; padding: 8px 10px 8px 14px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--paper); box-shadow: var(--shadow-small); }
+.site-nav { position: relative; z-index: 2; display: flex; width: min(calc(100% - 48px), 1140px); min-height: 52px; align-items: center; gap: 24px; margin: 0 auto; padding: 8px 10px 8px 14px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--paper); box-shadow: var(--shadow-small); }
 .brand { display: inline-flex; min-width: max-content; align-items: center; gap: 10px; text-decoration: none; }
 .brand-mark { display: grid; width: 30px; height: 30px; place-items: center; flex: 0 0 auto; border-radius: var(--radius-xs); background: var(--ink); }
 .brand-mark span { width: 12px; height: 12px; border: 2px solid var(--paper); border-radius: 2px; }
@@ -342,7 +342,7 @@ button:disabled { cursor: not-allowed; }
 @media (max-width: 760px) {
   html { background: var(--paper); }
   .site-frame { width: 100%; box-shadow: none; }
-  .site-nav { width: calc(100% - 32px); min-height: 58px; flex-wrap: wrap; gap: 10px 16px; margin-top: 16px; padding: 8px 9px; }
+  .site-nav { width: calc(100% - 32px); min-height: 58px; flex-wrap: wrap; gap: 10px 16px; margin: 0 auto; padding: 8px 9px; }
   .brand-copy small, .demo-badge { display: none; }
   .main-nav { order: 3; width: 100%; margin: 0; overflow-x: auto; padding: 2px 1px 3px; }
   .main-nav a { display: inline-flex; min-height: 44px; align-items: center; font-size: 11px; }
