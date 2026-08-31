@@ -181,6 +181,28 @@ describe("provider failover", () => {
     expect(result.provider).toBe("groq");
     expect(gemini.execute).toHaveBeenCalledTimes(2);
   });
+
+  it("uses a stored rubric level when provider evaluation falls back", async () => {
+    const unavailable = () => Object.assign(new Error("provider unavailable"), { status: 401 });
+    const gemini = provider("gemini", [unavailable()]);
+    const groq = provider("groq", [unavailable()]);
+    const service = createAiAssessmentService({ gemini, groq, sleep: async () => undefined, jitterMs: () => 0 });
+
+    const result = await service.evaluateWrittenAnswers({
+      assessmentSessionId: "assessment-1",
+      matrixVersionId: "matrix-v1",
+      answers: [{
+        questionId: "written-1",
+        competencyId: "statistics",
+        answer: "I reviewed the result and documented the method.",
+        rubric: [{ level: 1, criterion: "Names the method" }, { level: 3, criterion: "Explains and validates the method" }],
+        fallbackDemonstratedLevel: 2,
+      }],
+    });
+
+    expect(result.provider).toBe("seeded-fallback");
+    expect(result.data.evaluations[0]?.demonstratedLevel).toBe(1);
+  });
 });
 
 describe("provider SDK adapters", () => {

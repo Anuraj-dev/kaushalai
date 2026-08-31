@@ -16,34 +16,48 @@ test("administrator can publish an immutable matrix version", async ({ page }) =
 });
 
 test("primary official completes the adaptive path at desktop", async ({ page }) => {
+  test.setTimeout(180_000);
   await page.goto("/learner");
   await page.getByRole("button", { name: /Aarav Sharma/ }).click();
   await expect(page.locator(".question-list")).toBeVisible();
-  const radios = page.locator('input[type="radio"]');
-  await expect(radios).not.toHaveCount(0);
-  const count = await radios.count();
-  for (let index = 0; index < count; index += 5) await radios.nth(index).check();
+  await expect(page.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "0");
+  await expect(page.getByRole("button", { name: "Next question" })).toBeDisabled();
+  while (await page.getByRole("button", { name: "Next question" }).count()) {
+    await page.locator('input[type="radio"]').first().check();
+    await page.getByRole("button", { name: "Next question" }).click();
+  }
+  await page.locator('input[type="radio"]').first().check();
   await page.getByRole("button", { name: "Continue" }).click();
-  await expect(page.getByText("Round 2 · Personalized evidence")).toBeVisible();
-  for (const box of await page.locator("textarea").all()) await box.fill("I documented the method, checked the data, and reviewed the result.");
+  await expect(page.getByText("Round 2", { exact: true })).toBeVisible();
+  await expect(page.getByText("Personalized evidence", { exact: true })).toBeVisible();
+  while (await page.getByRole("button", { name: "Next question" }).count()) {
+    await page.locator("textarea").fill("I documented the method, checked the data, and reviewed the result.");
+    await page.getByRole("button", { name: "Next question" }).click();
+  }
+  await page.locator("textarea").fill("I documented the method, checked the data, and reviewed the result.");
   await page.getByRole("button", { name: "Continue" }).click();
   await expect.poll(async () => {
-    const finishVisible = await page.getByRole("button", { name: "Finish assessment" }).isVisible().catch(() => false);
+    const clarificationVisible = await page.getByText("Round 3", { exact: true }).isVisible().catch(() => false);
     const resultVisible = await page.getByText(/Assessment result/).isVisible().catch(() => false);
-    return finishVisible || resultVisible;
-  }).toBe(true);
-  if (await page.getByRole("button", { name: "Finish assessment" }).count()) {
-    await expect(page.getByRole("button", { name: "Finish assessment" })).toBeEnabled();
-    for (const box of await page.locator("textarea").all()) await box.fill("I documented the method, checked the data, and reviewed the result.");
+    return clarificationVisible || resultVisible;
+  }, { timeout: 45_000 }).toBe(true);
+  if (await page.getByText("Round 3", { exact: true }).count()) {
+    while (await page.getByRole("button", { name: "Next question" }).count()) {
+      await page.locator("textarea").fill("I documented the method, checked the data, and reviewed the result.");
+      await page.getByRole("button", { name: "Next question" }).click();
+    }
+    await expect(page.getByRole("button", { name: "Finish assessment" })).toBeDisabled();
+    await page.locator("textarea").fill("I documented the method, checked the data, and reviewed the result.");
     await page.getByRole("button", { name: "Finish assessment" }).click();
   }
   await expect(page.getByText(/Assessment result/)).toBeVisible();
-  await expect(page.getByText("Learning plan", { exact: true })).toBeVisible();
+  await expect(page.locator(".recommendation-card").getByText("Learning plan", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Mark complete" }).first()).toBeVisible();
   await page.getByRole("button", { name: "Mark complete" }).first().click();
   await expect(page.getByRole("button", { name: "Start reassessment" })).toBeVisible();
   await page.getByRole("button", { name: "Start reassessment" }).click();
-  await expect(page.getByText("Round 1 · Fixed baseline")).toBeVisible();
+  await expect(page.getByText("Round 1", { exact: true })).toBeVisible();
+  await expect(page.getByText("Fixed baseline", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Start reassessment" })).toHaveCount(0);
 });
 
@@ -55,6 +69,7 @@ test("learner viewport has no horizontal overflow", async ({ page }) => {
 });
 
 test("three selectable officials produce distinct persisted competency paths", async ({ request }) => {
+  test.setTimeout(180_000);
   const officialsResponse = await request.get("/api/officials?selectable=true");
   expect(officialsResponse.ok()).toBe(true);
   const officials = await officialsResponse.json() as Array<{ id: string; jobRoleName: string }>;

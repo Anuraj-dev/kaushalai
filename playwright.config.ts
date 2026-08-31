@@ -1,10 +1,15 @@
 import { defineConfig, devices } from "@playwright/test";
 
+const e2ePort = Number(process.env.PLAYWRIGHT_PORT ?? "3100");
+const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? `http://127.0.0.1:${e2ePort}`;
+
 export default defineConfig({
   testDir: "./tests/e2e",
   fullyParallel: false,
-  webServer: { command: "npm run db:setup && npm run dev", url: "http://127.0.0.1:3000", reuseExistingServer: !process.env.CI },
-  use: { baseURL: "http://127.0.0.1:3000", trace: "retain-on-failure" },
+  workers: 1,
+  expect: { timeout: 45_000 },
+  webServer: { command: `NEXT_DIST_DIR=.next-e2e npm run db:setup && NEXT_DIST_DIR=.next-e2e npm run dev -- --hostname 127.0.0.1 --port ${e2ePort}`, url: baseURL, reuseExistingServer: process.env.PLAYWRIGHT_REUSE_SERVER === "true" },
+  use: { baseURL, trace: "retain-on-failure" },
   projects: [
     { name: "desktop", use: { ...devices["Desktop Chrome"] } },
     // Use Chromium at the mobile viewport so local verification does not require

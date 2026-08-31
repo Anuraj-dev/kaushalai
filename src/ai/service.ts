@@ -216,7 +216,10 @@ export function createAiAssessmentService(dependencies: Dependencies) {
         validate: (data) => validateWrittenEvaluations(data, request),
         fallback: () => validateWrittenEvaluations({ schemaVersion: AI_SCHEMA_VERSION, evaluations: request.answers.map((answer) => ({
           questionId: answer.questionId, competencyId: answer.competencyId,
-          demonstratedLevel: answer.fallbackDemonstratedLevel, confidence: 0,
+          demonstratedLevel: answer.rubric.some((entry) => entry.level === answer.fallbackDemonstratedLevel)
+            ? answer.fallbackDemonstratedLevel
+            : [...answer.rubric].sort((a, b) => Math.abs(a.level - answer.fallbackDemonstratedLevel) - Math.abs(b.level - answer.fallbackDemonstratedLevel))[0]!.level,
+          confidence: 0,
           evidenceSummary: answer.answer.trim() || (answer.rubric.find((entry) => entry.level === answer.fallbackDemonstratedLevel)?.criterion ?? answer.rubric[0]?.criterion ?? "No evidence available"),
           rubricReason: answer.rubric.find((entry) => entry.level === answer.fallbackDemonstratedLevel)?.criterion ?? answer.rubric[0]?.criterion ?? "No evidence available",
           ambiguity: "Provider evaluation unavailable",

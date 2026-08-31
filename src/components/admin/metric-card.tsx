@@ -1,3 +1,3 @@
 export function MetricCard({ label, value, detail }: { label: string; value: string | number; detail?: string }) {
-  return <article className="admin-metric"><p>{label}</p><strong>{value}</strong>{detail && <small>{detail}</small>}</article>;
+  return <article className="admin-metric"><span className="metric-label">{label}</span><strong>{value}</strong>{detail && <small>{detail}</small>}</article>;
 }

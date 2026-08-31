@@ -152,7 +152,12 @@ function session(db: KaushalDatabase, assessmentId: string) {
     LEFT JOIN course_completions cc ON cc.id=h.source_id LEFT JOIN courses co ON co.id=cc.course_id WHERE h.official_id=? ORDER BY h.recorded_at DESC`).all(assessment.official_id) as Row[]).map((row) => ({
     id: String(row.id), competencyName: String(row.competency_name), source: String(row.source_type), level: Number(row.level), reliability: Number(row.reliability), recordedAt: String(row.recorded_at), courseTitle: row.course_title ? String(row.course_title) : null,
   }));
-  const recommendations = new LearningService(db).getPath(assessmentId) as Row[];
+  const learning = new LearningService(db);
+  let recommendations = learning.getPath(assessmentId) as Row[];
+  if (["completed", "provisional"].includes(String(assessment.status)) && recommendations.length === 0) {
+    learning.createPath(assessmentId);
+    recommendations = learning.getPath(assessmentId) as Row[];
+  }
   const invitations = db.prepare("SELECT * FROM reassessment_invitations WHERE official_id=? AND accepted_at IS NULL ORDER BY created_at DESC").all(assessment.official_id) as Row[];
   const matrixReassessment = (db.prepare(`SELECT EXISTS(
     SELECT 1 FROM matrix_versions newer JOIN competency_matrices cm ON cm.id=newer.matrix_id
