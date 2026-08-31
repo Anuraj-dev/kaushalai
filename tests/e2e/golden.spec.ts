@@ -18,7 +18,7 @@ test("administrator can publish an immutable matrix version", async ({ page }) =
 test("primary official completes the adaptive path at desktop", async ({ page }) => {
   test.setTimeout(180_000);
   await page.goto("/learner");
-  await page.getByRole("button", { name: /Aarav Sharma/ }).click();
+  await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page.locator(".question-list")).toBeVisible();
   await expect(page.getByText("MOSPI-0001", { exact: true })).toHaveCount(0);
   await expect(page.getByText("active", { exact: true })).toHaveCount(0);
@@ -68,10 +68,9 @@ test("primary official completes the adaptive path at desktop", async ({ page })
 test("learner viewport has no horizontal overflow", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/learner");
-  await expect(page.getByRole("heading", { name: "Select an official to begin" })).toBeVisible();
-  await expect(page.getByText("Choose a sample profile and start the assessment", { exact: true })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Select an official", exact: true })).toBeVisible();
-  await expect(page.getByText("Each persona has a different role matrix and learning context.", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: /Sign in to your official workspace/ })).toBeVisible();
+  await expect(page.getByLabel("Employee code")).toHaveValue("MOSPI-0001");
+  await expect(page.getByRole("button", { name: "Change credentials" })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
 });
 
