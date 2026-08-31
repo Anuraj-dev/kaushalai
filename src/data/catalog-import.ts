@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { KaushalDatabase } from "@/db/client";
+import bundledCapture from "../../sih.json";
 
 interface SourceCourse {
   title: string; provider?: string; duration?: string; level?: string; rating?: string;
@@ -17,7 +18,13 @@ export function stableCourseId(course: Pick<SourceCourse, "source_url" | "title"
 }
 
 export function importCatalog(database: KaushalDatabase, sourcePath = resolve("sih.json")): { imported: number; detailed: number } {
-  const capture = JSON.parse(readFileSync(sourcePath, "utf8")) as CatalogCapture;
+  let capture: CatalogCapture;
+  try {
+    capture = JSON.parse(readFileSync(sourcePath, "utf8")) as CatalogCapture;
+  } catch (error) {
+    if (sourcePath !== resolve("sih.json") || (error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    capture = bundledCapture as CatalogCapture;
+  }
   if (capture.courses.length !== 222 || capture.scrape_summary.unique_courses !== 222) throw new Error("Expected exactly 222 catalog courses");
   const detailed = capture.courses.filter((course) => course.detail_available === true).length;
   if (detailed !== 25 || capture.scrape_summary.detailed_courses !== 25) throw new Error("Expected exactly 25 detailed catalog courses");
