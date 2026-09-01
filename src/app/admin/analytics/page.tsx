@@ -21,25 +21,16 @@ export default function AnalyticsPage() {
         <div className="admin-governance-metric">
           <span>Readiness</span>
           <strong>{analytics.readinessPercent}%</strong>
-          <div className="metric-progress" role="progressbar" aria-valuenow={analytics.readinessPercent} aria-valuemin={0} aria-valuemax={100} aria-label={`Readiness ${analytics.readinessPercent}%`}>
-            <span style={{ width: `${analytics.readinessPercent}%` }} />
-          </div>
           <small>Supported where assessed ≥ required</small>
         </div>
         <div className="admin-governance-metric">
           <span>Coverage</span>
           <strong>{analytics.assessmentCoveragePercent}%</strong>
-          <div className="metric-progress" role="progressbar" aria-valuenow={analytics.assessmentCoveragePercent} aria-valuemin={0} aria-valuemax={100} aria-label={`Coverage ${analytics.assessmentCoveragePercent}%`}>
-            <span style={{ width: `${analytics.assessmentCoveragePercent}%` }} />
-          </div>
           <small>Supported results / total</small>
         </div>
         <div className="admin-governance-metric">
           <span>Completion rate</span>
           <strong>{completionRate}%</strong>
-          <div className={`metric-progress ${completionRate === 100 ? "is-complete" : ""}`} role="progressbar" aria-valuenow={completionRate} aria-valuemin={0} aria-valuemax={100} aria-label={`Completion ${completionRate}%`}>
-            <span style={{ width: `${completionRate}%` }} />
-          </div>
           <small>
             {analytics.courseCompletions}/{analytics.courseAssignments} completed
           </small>
@@ -49,20 +40,17 @@ export default function AnalyticsPage() {
           <strong>
             {analytics.completedAssessments}/{analytics.officials}
           </strong>
-          <div className="metric-progress" role="progressbar" aria-valuenow={officialsAssessedPct} aria-valuemin={0} aria-valuemax={100} aria-label={`Officials assessed ${officialsAssessedPct}%`}>
-            <span style={{ width: `${officialsAssessedPct}%` }} />
-          </div>
           <small>{officialsAssessedPct}% of officials with completed assessment</small>
         </div>
       </section>
 
       <section className="admin-metrics--paper" aria-label="Organization totals">
         <MetricCard label="Officials" value={analytics.officials} detail={`${analytics.completedAssessments} completed`} variant="paper" />
-        <MetricCard label="Completed assessments" value={analytics.completedAssessments} detail={`${officialsAssessedPct}% of officials`} variant="paper" progress={officialsAssessedPct} />
+        <MetricCard label="Completed assessments" value={analytics.completedAssessments} detail={`${officialsAssessedPct}% of officials`} variant="paper" />
         <MetricCard label="Course assignments" value={analytics.courseAssignments} detail={`${analytics.courseCompletions} completions`} variant="paper" />
-        <MetricCard label="Course completions" value={analytics.courseCompletions} detail={`${completionRate}% completion rate`} variant="paper" progress={completionRate} tone={completionRate === 100 ? "ready" : "default"} />
-        <MetricCard label="Readiness" value={`${analytics.readinessPercent}%`} detail="Org pass rate" variant="paper" progress={analytics.readinessPercent} />
-        <MetricCard label="Assessment coverage" value={`${analytics.assessmentCoveragePercent}%`} detail="Supported / total" variant="paper" progress={analytics.assessmentCoveragePercent} />
+        <MetricCard label="Course completions" value={analytics.courseCompletions} detail={`${completionRate}% completion rate`} variant="paper" />
+        <MetricCard label="Readiness" value={`${analytics.readinessPercent}%`} detail="Org pass rate" variant="paper" />
+        <MetricCard label="Assessment coverage" value={`${analytics.assessmentCoveragePercent}%`} detail="Supported / total" variant="paper" />
       </section>
 
       <section className="analytics-ledger" aria-label="Supported gaps by domain">
@@ -74,15 +62,10 @@ export default function AnalyticsPage() {
         {analytics.supportedGapsByDomain.length ? (
           <div className="analytics-ledger__body">
             {analytics.supportedGapsByDomain.map((item) => {
-              const width = maxGaps ? Math.round((item.gaps / maxGaps) * 100) : 0;
-              const isMax = item.gaps === maxGaps && maxGaps > 0;
               return (
-                <div key={item.domain} className={`analytics-ledger-row ${isMax ? "is-max" : ""}`}>
+                <div key={item.domain} className="analytics-ledger-row">
                   <strong>{item.domain.replaceAll("_", " ")}</strong>
                   <span style={{ fontFamily: "var(--font-mono)", fontSize: 10 }}>{item.gaps} supported gaps</span>
-                  <div className="analytics-bar" role="progressbar" aria-valuenow={item.gaps} aria-valuemin={0} aria-valuemax={maxGaps} aria-label={`${item.domain} ${item.gaps} gaps`}>
-                    <span style={{ width: `${width}%` }} />
-                  </div>
                 </div>
               );
             })}
