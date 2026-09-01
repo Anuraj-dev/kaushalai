@@ -6,11 +6,13 @@ import { usePathname, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 
 const officialStorageKey = "kaushal-active-official";
+const adminSessionKey = "kaushal-admin-session";
 
 export function AppNavigation() {
   const pathname = usePathname();
   const router = useRouter();
   const [officialName, setOfficialName] = useState<string | null>(null);
+  const [adminName, setAdminName] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -42,21 +44,55 @@ export function AppNavigation() {
     void syncOfficial();
     const handleStorage = () => void syncOfficial();
     window.addEventListener("kaushal-assessment-started", syncOfficial);
+    window.addEventListener("kaushal-admin-signed-in", syncOfficial);
     window.addEventListener("storage", handleStorage);
     return () => {
       cancelled = true;
       window.removeEventListener("kaushal-assessment-started", syncOfficial);
+      window.removeEventListener("kaushal-admin-signed-in", syncOfficial);
       window.removeEventListener("storage", handleStorage);
+    };
+  }, [pathname]);
+
+  useEffect(() => {
+    const syncAdmin = () => {
+      try {
+        const savedAdmin = window.localStorage.getItem(adminSessionKey);
+        if (!savedAdmin) {
+          setAdminName(null);
+          return;
+        }
+        const parsed = JSON.parse(savedAdmin) as { name?: string };
+        if (parsed?.name) setAdminName(parsed.name);
+        else setAdminName("Administrator");
+      } catch {
+        setAdminName(null);
+      }
+    };
+    syncAdmin();
+    const handleAdmin = () => syncAdmin();
+    window.addEventListener("kaushal-admin-signed-in", handleAdmin);
+    window.addEventListener("kaushal-assessment-started", handleAdmin);
+    window.addEventListener("storage", handleAdmin);
+    return () => {
+      window.removeEventListener("kaushal-admin-signed-in", handleAdmin);
+      window.removeEventListener("kaushal-assessment-started", handleAdmin);
+      window.removeEventListener("storage", handleAdmin);
     };
   }, [pathname]);
 
   function logout() {
     window.localStorage.removeItem("kaushal-active-assessment");
     window.localStorage.removeItem(officialStorageKey);
+    window.localStorage.removeItem(adminSessionKey);
     window.dispatchEvent(new Event("kaushal-assessment-started"));
+    window.dispatchEvent(new Event("kaushal-admin-signed-in"));
     setOfficialName(null);
+    setAdminName(null);
     // Avoid staying on protected workspace after logout
-    if (pathname?.startsWith("/learner")) {
+    if (pathname?.startsWith("/admin")) {
+      router.push("/admin/login");
+    } else if (pathname?.startsWith("/learner")) {
       router.push("/learner/login");
     } else {
       router.refresh();
@@ -73,13 +109,39 @@ export function AppNavigation() {
         </span>
       </Link>
       <div className="nav-actions">
-        {officialName ? <>
-          <Link href="/learner" className="nav-profile" aria-label={`Go to workspace, signed in as ${officialName}`}>
-            <span className="nav-profile-status" aria-hidden="true" />
-            <span><small>Signed in as</small><strong>{officialName}</strong></span>
-          </Link>
-          <Button className="nav-logout" size="sm" variant="secondary" onClick={logout}>Log out</Button>
-        </> : <Button asChild className="nav-cta" size="sm" variant="primary"><Link href="/learner/login">Start assessment <span aria-hidden="true">→</span></Link></Button>}
+        {adminName ? (
+          <>
+            <Link href="/admin" className="nav-profile" aria-label={`Go to workspace, signed in as ${adminName}`}>
+              <span className="nav-profile-status" aria-hidden="true" />
+              <span>
+                <small>Signed in as</small>
+                <strong>{adminName}</strong>
+              </span>
+            </Link>
+            <Button className="nav-logout" size="sm" variant="secondary" onClick={logout}>
+              Log out
+            </Button>
+          </>
+        ) : officialName ? (
+          <>
+            <Link href="/learner" className="nav-profile" aria-label={`Go to workspace, signed in as ${officialName}`}>
+              <span className="nav-profile-status" aria-hidden="true" />
+              <span>
+                <small>Signed in as</small>
+                <strong>{officialName}</strong>
+              </span>
+            </Link>
+            <Button className="nav-logout" size="sm" variant="secondary" onClick={logout}>
+              Log out
+            </Button>
+          </>
+        ) : (
+          <Button asChild className="nav-cta" size="sm" variant="primary">
+            <Link href="/learner/login">
+              Start assessment <span aria-hidden="true">→</span>
+            </Link>
+          </Button>
+        )}
       </div>
     </header>
   );
