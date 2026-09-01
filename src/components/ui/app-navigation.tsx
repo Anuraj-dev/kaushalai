@@ -78,7 +78,6 @@ export function AppNavigation() {
             <span className="nav-profile-status" aria-hidden="true" />
             <span><small>Signed in as</small><strong>{officialName}</strong></span>
           </Link>
-          <Button asChild size="sm" variant="secondary"><Link href="/learner">Go to workspace</Link></Button>
           <Button className="nav-logout" size="sm" variant="secondary" onClick={logout}>Log out</Button>
         </> : <Button asChild className="nav-cta" size="sm" variant="primary"><Link href="/learner/login">Start assessment <span aria-hidden="true">→</span></Link></Button>}
       </div>
