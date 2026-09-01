@@ -3,6 +3,12 @@ import type { KaushalDatabase } from "@/db/client";
 
 type Row = Record<string, unknown>;
 
+const STOP_WORDS = new Set([
+  "a", "about", "an", "and", "are", "as", "at", "be", "can", "does", "for", "from", "how", "i", "in", "is", "it",
+  "me", "of", "on", "or", "that", "the", "this", "to", "what", "which", "with", "you", "your",
+  "address", "courses", "course", "first", "from", "gap", "gaps", "official", "recommend", "recommended", "skill", "skills", "tell", "was", "when", "why",
+]);
+
 export type RagCourse = CatalogGuidePathCourse & {
   relevanceScore: number;
   matchedTerms: string[];
@@ -63,13 +69,12 @@ const PLATFORM_KNOWLEDGE: Array<{ title: string; content: string; keywords: stri
 ];
 
 function tokens(text: string): string[] {
-  return text.toLowerCase().match(/[a-z0-9]+/g)?.filter((w) => w.length >= 3) ?? [];
+  return [...new Set(text.toLowerCase().match(/[a-z0-9]+/g)?.filter((w) => w.length >= 3 && !STOP_WORDS.has(w)) ?? [])];
 }
 
 function scoreOverlap(queryTokens: Set<string>, docTokens: string[]): number {
-  let hits = 0;
-  for (const t of docTokens) if (queryTokens.has(t)) hits += 1;
-  return hits;
+  const documentTerms = new Set(docTokens);
+  return [...queryTokens].filter((term) => documentTerms.has(term)).length;
 }
 
 function courseCorpusText(course: {
@@ -108,9 +113,10 @@ export function retrieveRagContext(
   // 1) Retrieve from full catalog (all courses, not just path)
   const allRows = database
     .prepare(
-      `SELECT c.id, c.title, c.provider, c.duration, c.level, c.source_url, c.detail_available, c.detail_json, c.search_terms_json, c.domains_json, comp.name competency_name, comp.id competency_id
-       FROM courses c LEFT JOIN course_competencies cc ON cc.course_id=c.id LEFT JOIN competencies comp ON comp.id=cc.competency_id
-       GROUP BY c.id`,
+      `SELECT c.id, c.title, c.provider, c.duration, c.level, c.source_url, c.detail_available, c.detail_json, c.search_terms_json, c.domains_json,
+       (SELECT comp.name FROM course_competencies cc JOIN competencies comp ON comp.id=cc.competency_id WHERE cc.course_id=c.id ORDER BY cc.relevance DESC, comp.name LIMIT 1) competency_name,
+       (SELECT comp.id FROM course_competencies cc JOIN competencies comp ON comp.id=cc.competency_id WHERE cc.course_id=c.id ORDER BY cc.relevance DESC, comp.name LIMIT 1) competency_id
+       FROM courses c`,
     )
     .all() as Row[];
 
@@ -160,9 +166,12 @@ export function retrieveRagContext(
     // boost if any query token in title
     const titleTokens = new Set(tokens(title));
     for (const qt of qTokens) if (titleTokens.has(qt)) score += 2;
-    // small boost for detailed courses
-    if (row.detail_available === 1) score += 0.1;
-    if (score > 0) scored.push({ row, score, matched: [...qSet].filter((t) => docTokens.includes(t)) });
+    if (score > 0) {
+      // Only boost a course after it has a meaningful query match; detail alone
+      // must not make every detailed course a result for a generic question.
+      if (row.detail_available === 1) score += 0.1;
+      scored.push({ row, score, matched: [...qSet].filter((t) => docTokens.includes(t)) });
+    }
   }
   scored.sort((a, b) => b.score - a.score);
   const top = scored.slice(0, limit).map(({ row, score, matched }) => {
@@ -184,8 +193,10 @@ export function retrieveRagContext(
       level: String(row.level ?? ""),
       sourceUrl: String(row.source_url),
       evidence: row.detail_available === 1 ? "detailed" : "title",
-      competencyId: String(row.competency_id ?? "unknown"),
-      competencyName: String(row.competency_name ?? "General"),
+      // Unmapped catalog courses have no reliable competency. Keep that metadata empty
+      // instead of presenting a fabricated competency to the model or learner.
+      competencyId: row.competency_id == null ? "" : String(row.competency_id),
+      competencyName: row.competency_name == null ? "" : String(row.competency_name),
       rank: 999,
       rationale: `Retrieved for query "${question.slice(0, 80)}"`,
       relevanceScore: score,

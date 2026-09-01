@@ -63,7 +63,10 @@ function text(value: unknown): string {
   return value == null || value === "" ? "" : String(value);
 }
 
-function gapSummaryFromResults(results: CatalogGuideAiRequest["results"]): string {
+function gapSummaryFromResults(results: CatalogGuideAiRequest["results"], assessmentStatus?: string): string {
+  if (results.length === 0 && assessmentStatus !== undefined && !["completed", "provisional"].includes(assessmentStatus)) {
+    return "Your assessment is still in progress. Skill-gap results will be available after scoring.";
+  }
   const names = results.filter((result) => result.gap > 0).map((result) => result.competencyName);
   if (names.length === 0) return "No current skill gaps on the assessed competencies.";
   return `Skill gaps in ${names.join(", ")}.`;
@@ -190,6 +193,7 @@ export class CatalogGuideService {
 
     const results = loadResults(this.database, assessmentId);
     const loaded = loadPathCourses(this.database, assessmentId);
+    const assessmentStatus = text(assessment.status);
 
     // RAG retrieval: full catalog + platform docs, always
     const rag = retrieveRagContext(this.database, trimmed, loaded);
@@ -201,11 +205,12 @@ export class CatalogGuideService {
     const distinctAll = [...dedup.values()];
 
     const chips = suggestedNext(loaded, rag.retrievedCourses);
-    const gapSummary = gapSummaryFromResults(results);
+    const gapSummary = gapSummaryFromResults(results, assessmentStatus);
 
     const request: PlatformChatRequest = {
       assessmentSessionId: assessmentId,
       matrixVersionId: String(assessment.matrix_version_id),
+      assessmentStatus,
       question: trimmed,
       results,
       pathCourses: loaded,
@@ -246,7 +251,7 @@ export class CatalogGuideService {
     return {
       schemaVersion: AI_SCHEMA_VERSION,
       answer,
-      gapSummary: data.gapSummary ?? gapSummary,
+      gapSummary: data.gapSummary?.trim() ? data.gapSummary.trim() : gapSummary,
       unavailable: data.unavailable ?? "",
       citedCourses,
       suggestedNext: chips,

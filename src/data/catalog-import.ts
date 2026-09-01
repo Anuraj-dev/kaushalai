@@ -35,8 +35,42 @@ export function importCatalog(database: KaushalDatabase, sourcePath = resolve("s
   database.transaction(() => {
     for (const course of capture.courses) {
       const detail = course.detail_available ? Object.fromEntries(Object.entries(course).filter(([key]) => !["title", "provider", "duration", "level", "rating", "thumbnail", "search_terms", "competency_domains", "source_url", "source_search_urls", "detail_available"].includes(key))) : null;
-      insert.run({ id: stableCourseId(course), source: "iGOT Karmayogi", sourceUrl: course.source_url ?? course.source_search_urls[0], title: course.title, provider: course.provider ?? null, duration: course.duration ?? null, level: course.level ?? null, rating: Number.isFinite(Number(course.rating)) ? Number(course.rating) : null, thumbnail: course.thumbnail ?? null, detailAvailable: course.detail_available ? 1 : 0, searchTerms: JSON.stringify(course.search_terms), domains: JSON.stringify(course.competency_domains), detail: detail ? JSON.stringify(detail) : null, provenance: JSON.stringify({ capture: capture.source, sourceSearchUrls: course.source_search_urls }) });
+      const courseId = stableCourseId(course);
+      insert.run({ id: courseId, source: "iGOT Karmayogi", sourceUrl: course.source_url ?? course.source_search_urls[0], title: course.title, provider: course.provider ?? null, duration: course.duration ?? null, level: course.level ?? null, rating: Number.isFinite(Number(course.rating)) ? Number(course.rating) : null, thumbnail: course.thumbnail ?? null, detailAvailable: course.detail_available ? 1 : 0, searchTerms: JSON.stringify(course.search_terms), domains: JSON.stringify(course.competency_domains), detail: detail ? JSON.stringify(detail) : null, provenance: JSON.stringify({ capture: capture.source, sourceSearchUrls: course.source_search_urls }) });
     }
   })();
+  linkCatalogCoursesToCompetencies(database);
   return { imported: capture.courses.length, detailed };
+}
+
+function linkCatalogCoursesToCompetencies(database: KaushalDatabase): void {
+  const tags = database.prepare("SELECT competency_id,tag FROM competency_course_tags").all() as Array<{ competency_id: string; tag: string }>;
+  const competencyIdsByTag = new Map<string, string[]>();
+  for (const { competency_id: competencyId, tag } of tags) {
+    const ids = competencyIdsByTag.get(tag) ?? [];
+    ids.push(competencyId);
+    competencyIdsByTag.set(tag, ids);
+  }
+
+  const courses = database.prepare("SELECT id,search_terms_json FROM courses").all() as Array<{ id: string; search_terms_json: string }>;
+  const insert = database.prepare(
+    "INSERT OR IGNORE INTO course_competencies(course_id,competency_id,evidence_type,relevance) VALUES (?,?,?,?)",
+  );
+  database.transaction(() => {
+    for (const course of courses) {
+      let searchTerms: unknown[] = [];
+      try {
+        const parsed = JSON.parse(course.search_terms_json) as unknown;
+        if (Array.isArray(parsed)) searchTerms = parsed;
+      } catch {
+        // Keep importing courses even when optional search metadata is malformed.
+      }
+      for (const value of searchTerms) {
+        if (typeof value !== "string") continue;
+        for (const competencyId of competencyIdsByTag.get(value.trim().toLowerCase()) ?? []) {
+          insert.run(course.id, competencyId, "search_term", 1);
+        }
+      }
+    }
+  })();
 }

@@ -151,9 +151,9 @@ export type PlatformChatCitation = z.infer<typeof platformChatCitationSchema>;
 export type PlatformChat = z.infer<typeof platformChatSchema>;
 
 export type PlatformChatRequest = CatalogGuideAiRequest & {
+  assessmentStatus: string;
   ragCourses: Array<CatalogGuidePathCourse & { relevanceScore?: number; matchedTerms?: string[] }>;
   platformDocs: Array<{ title: string; content: string }>;
-  // legacy alias: allow callers to pass gapSummary etc via answer
 };
 
 export type CatalogGuidePathCourse = {

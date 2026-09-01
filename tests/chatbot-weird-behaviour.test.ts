@@ -2,11 +2,11 @@ import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   AI_SCHEMA_VERSION,
-  CATALOG_GUIDE_EMPTY_PATH_COPY,
-  CATALOG_GUIDE_IDENTITY_COPY,
-  CATALOG_GUIDE_OUTSIDE_PATH_COPY,
+  createAiAssessmentService,
+  createGeminiAdapter,
+  createGroqAdapter,
   type CatalogGuide,
-  type CatalogGuideAiRequest,
+  type PlatformChatRequest,
 } from "@/ai";
 import { importCatalog } from "@/data/catalog-import";
 import { seedFoundation } from "@/data/seeds";
@@ -41,7 +41,7 @@ describe("chatbot weird-behaviour regression", () => {
   });
   afterEach(() => db.close());
 
-  it("WEIRD: generic 'Which gap does this address?' returns Basic Statistics + Data Quality mixed (screenshots 2-gap hallucination)", async () => {
+  it("keeps generic gap questions from mixing multiple competencies in fallback", async () => {
     insertFinished(db);
     new LearningService(db).createPath("a1");
     const path = db.prepare("SELECT course_id, competency_id FROM recommendations WHERE assessment_id='a1' ORDER BY rank").all() as Row[];
@@ -49,96 +49,124 @@ describe("chatbot weird-behaviour regression", () => {
     const comps = new Set(path.map((r) => String(r.competency_id)));
     expect(comps.size).toBeGreaterThanOrEqual(2);
 
-    // Seeded fallback for generic gap question currently returns slice(0,3) = mixed competencies -> weird
-    const service = new CatalogGuideService(db, async (req: CatalogGuideAiRequest) => {
-      // Mimic seeded fallback: no distinctive tokens, returns first 3
-      const notes = req.pathCourses.slice(0, 3).map((c) => ({ courseId: c.courseId, note: `Closes ${c.competencyName} gap` }));
-      return explainResult({ schemaVersion: AI_SCHEMA_VERSION, gapSummary: "Mixed gaps", courseNotes: notes, unavailable: "" });
+    const ai = createAiAssessmentService({
+      gemini: createGeminiAdapter({}),
+      groq: createGroqAdapter({}),
+      sleep: async () => undefined,
+      jitterMs: () => 0,
     });
+    const service = new CatalogGuideService(db, (req: PlatformChatRequest) => ai.chat(req));
 
     const res = await service.ask("a1", "Which gap does this address?");
     const citedComps = new Set(res.citedCourses.map((c) => c.competencyId));
-    // WEIRD: currently 2 competencies, expected 1 or 0 for generic question
-    // This test documents the weird behaviour — it SHOULD be 1 competency or gapSummary only
-    expect(citedComps.size).toBe(2); // <-- weird: mixed gaps
-    // Ideal assertion (currently failing, uncomment to fix):
-    // expect(citedComps.size).toBeLessThanOrEqual(1);
+    expect(citedComps.size).toBeLessThanOrEqual(1);
   });
 
-  it("WEIRD: 'Assessment is not finished' red error when guide visible mid-assessment (active status)", async () => {
+  it("uses platform context instead of arbitrary courses for assessment questions", async () => {
+    insertFinished(db);
+    new LearningService(db).createPath("a1");
+    const ai = createAiAssessmentService({
+      gemini: createGeminiAdapter({}),
+      groq: createGroqAdapter({}),
+      sleep: async () => undefined,
+      jitterMs: () => 0,
+    });
+
+    const response = await new CatalogGuideService(db, (request: PlatformChatRequest) => ai.chat(request))
+      .ask("a1", "How does the assessment work?");
+    expect(response.citedCourses).toEqual([]);
+    expect(response.answer).toContain("Kaushal");
+  });
+
+  it("describes an active assessment as pending instead of as zero gaps", async () => {
     db.prepare("INSERT INTO assessments(id,official_id,matrix_version_id,status) VALUES ('active-1','official-01','matrix-01-v1','active')").run();
-    const service = new CatalogGuideService(db, async () => explainResult({ schemaVersion: AI_SCHEMA_VERSION, gapSummary: "", courseNotes: [], unavailable: "" }));
-    await expect(service.ask("active-1", "Which gap does this address?")).rejects.toMatchObject({ status: 400, message: "Assessment is not finished" });
-    // Weird: frontend shows this 400 as red alert inside chat (screenshot red box) instead of friendly unavailable
-    // Ideal: should return 200 with unavailable copy, not throw
+    const requests: PlatformChatRequest[] = [];
+    const service = new CatalogGuideService(db, async (request: PlatformChatRequest) => {
+      requests.push(request);
+      return {
+        data: {
+          schemaVersion: AI_SCHEMA_VERSION,
+          answer: "The assessment is still in progress.",
+          citations: [],
+          gapSummary: "",
+          courseNotes: [],
+          unavailable: "",
+        },
+      };
+    });
+    const response = await service.ask("active-1", "Which gap does this address?");
+    expect(requests[0]?.assessmentStatus).toBe("active");
+    expect(response.gapSummary).toContain("still in progress");
   });
 
-  it("WEIRD: 'What is this course about?' is hijacked as identity (what is this regex)", async () => {
+  it("sends course questions to the generalized handler", async () => {
     insertFinished(db);
     new LearningService(db).createPath("a1");
     const explain = vi.fn(async () => explainResult({ schemaVersion: AI_SCHEMA_VERSION, gapSummary: "should not run", courseNotes: [], unavailable: "" }));
     const service = new CatalogGuideService(db, explain);
     const res = await service.ask("a1", "What is this course about?");
-    // Currently treated as identity because isCatalogGuideIdentityQuestion matches /\bwhat is this\b/
-    expect(res.gapSummary).toBe(CATALOG_GUIDE_IDENTITY_COPY);
-    expect(explain).not.toHaveBeenCalled();
-    // Weird: user expects course explanation, gets identity copy
+    expect(res.gapSummary).toBe("should not run");
+    expect(explain).toHaveBeenCalled();
   });
 
-  it("WEIRD: off-path 'Recommend a Python course' correctly outside but still calls AI (waste)", async () => {
+  it("retrieves off-path catalog courses instead of rejecting them as outside the path", async () => {
     insertFinished(db);
     new LearningService(db).createPath("a1");
     const pathCourses = db.prepare("SELECT course_id FROM recommendations WHERE assessment_id='a1'").all() as Row[];
     const pathSet = new Set(pathCourses.map((r) => String(r.course_id)));
     const offPath = (db.prepare("SELECT id FROM courses WHERE LOWER(title) LIKE '%python%'").all() as Row[]).find((r) => !pathSet.has(String(r.id)));
-    const explain = vi.fn(async (req: CatalogGuideAiRequest) => {
+    const explain = vi.fn(async () => {
       const fakeId = offPath ? String(offPath.id) : "course-fake-off-path";
       return explainResult({ schemaVersion: AI_SCHEMA_VERSION, gapSummary: "", courseNotes: [{ courseId: fakeId, note: "Hallucinated" }], unavailable: "" });
     });
     const service = new CatalogGuideService(db, explain);
     const res = await service.ask("a1", "Recommend a Python course for my gaps");
-    // Currently: distinctive [python] not in corpus -> outsidePath true, but AI was still called, then discarded
-    expect(explain).toHaveBeenCalled(); // weird: wastes provider call for outside query
-    expect(res.unavailable).toBe(CATALOG_GUIDE_OUTSIDE_PATH_COPY);
-    expect(res.citedCourses).toEqual([]);
+    expect(explain).toHaveBeenCalled();
+    expect(res.unavailable).toBe("");
+    if (offPath) expect(res.citedCourses.some((course) => course.courseId === offPath.id)).toBe(true);
   });
 
-  it("WEIRD: 'Tell me about SQL' (3-letter) filtered out, but still correctly outside via 'tell' token", async () => {
+  it("keeps SQL as a searchable three-letter catalog term", async () => {
     insertFinished(db);
     new LearningService(db).createPath("a1");
     const explain = vi.fn(async () => explainResult({ schemaVersion: AI_SCHEMA_VERSION, gapSummary: "Skill gaps", courseNotes: [], unavailable: "" }));
     const service = new CatalogGuideService(db, explain);
-    // SQL length 3 -> dropped by tokens(), but 'tell' remains distinctive and not in corpus -> outside
     const res = await service.ask("a1", "Tell me about SQL");
-    expect(explain).toHaveBeenCalled(); // still calls AI before checking outside (weird)
-    expect(res.unavailable).toBe(CATALOG_GUIDE_OUTSIDE_PATH_COPY);
+    expect(explain).toHaveBeenCalled();
+    expect(res.unavailable).toBe("");
   });
 
-  it("WEIRD: client allowed filter hides hallucination silently (components/catalog-guide-panel.tsx:217)", async () => {
+  it("does not expose citations that are absent from retrieved context", async () => {
     insertFinished(db);
     new LearningService(db).createPath("a1");
     const path = db.prepare("SELECT course_id FROM recommendations WHERE assessment_id='a1' LIMIT 1").get() as Row;
     const allowed = String(path.course_id);
-    // Simulate server returning a hallucinated extra course that client will filter
-    const hallucinated = [
-      { courseId: allowed, title: "Real", provider: "p", duration: "1h", level: "l", sourceUrl: "u", evidence: "title" as const, competencyId: "c", competencyName: "n", rank: 1, note: "real" },
-      { courseId: "course-not-on-path", title: "Fake", provider: "x", duration: "1h", level: "l", sourceUrl: "u", evidence: "title" as const, competencyId: "c", competencyName: "n", rank: 99, note: "hallucinated" },
-    ];
-    const filtered = hallucinated.filter((c) => new Set([allowed]).has(c.courseId));
-    expect(filtered).toHaveLength(1);
-    expect(filtered[0].courseId).toBe(allowed);
-    // Weird: UI will show only 1 card, silently dropping hallucination, user never sees error, masking bug
+    const service = new CatalogGuideService(db, async () => ({
+      data: {
+        schemaVersion: AI_SCHEMA_VERSION,
+        answer: "Grounded answer",
+        citations: [
+          { courseId: allowed, note: "real" },
+          { courseId: "course-not-in-context", note: "hallucinated" },
+        ],
+        gapSummary: "",
+        courseNotes: [],
+        unavailable: "",
+      },
+    }));
+    const response = await service.ask("a1", "Why is this first?");
+    expect(response.citedCourses.map((course) => course.courseId)).toEqual([allowed]);
   });
 
-  it("WEIRD: empty path chip 'Why is this first?' calls AI with empty path but frontend still shows chip as clickable", async () => {
+  it("uses general chips when no learning path exists", async () => {
     insertFinished(db);
     // Do NOT createPath -> empty recommendations
     const service = new CatalogGuideService(db, async () => explainResult({ schemaVersion: AI_SCHEMA_VERSION, gapSummary: "should not run", courseNotes: [], unavailable: "" }));
     const res = await service.ask("a1", "Why is this first?");
-    expect(res.unavailable).toBe(CATALOG_GUIDE_EMPTY_PATH_COPY);
+    expect(res.unavailable).toBe("");
     expect(res.citedCourses).toEqual([]);
-    // Weird: chips suggestedNext includes Why is this first? even though empty, clickable chip will just re-ask same and get same empty copy loop
-    expect(res.suggestedNext).toContain("Why is this first?");
+    expect(res.suggestedNext).not.toContain("Why is this first?");
+    expect(res.suggestedNext.slice(0, 3)).toEqual(["How does the assessment work?", "Explain my gaps", "How is the learning plan built?"]);
   });
 
   it("WEIRD: gapSummary + unavailable both empty allowed by validateCatalogGuideOutput (contracts.ts:281)", async () => {
@@ -148,8 +176,9 @@ describe("chatbot weird-behaviour regression", () => {
     const explain: ExplainCatalogGuide = async () => explainResult({ schemaVersion: AI_SCHEMA_VERSION, gapSummary: "", courseNotes: [{ courseId: String(path.course_id), note: "ok" }], unavailable: "" });
     const service = new CatalogGuideService(db, explain);
     const res = await service.ask("a1", "Why is this first?");
-    // Both empty but with cite -> currently allowed, shows card with no summary
-    expect(res.gapSummary).toBe("");
+    // Legacy notes still render as citations, while the main answer remains available.
+    expect(res.gapSummary).toContain("Skill gaps in");
+    expect(res.answer).toBe("ok");
     expect(res.citedCourses).toHaveLength(1);
     // Weird: user sees card with no gap context
   });
