@@ -27,41 +27,24 @@ export default async function MatrixPage({ params }: { params: Promise<{ roleId:
       </Link>
       <header className="page-header admin-page-header admin-page-header--matrix">
         <div>
-          <div className="header-meta">
-            <span className={`status-pill status-pill--${matrix.status}`}>
-              <span className="status-pill__dot" aria-hidden="true" />
-              {matrix.status}
-            </span>
-            <span className="tag">v{matrix.version}</span>
-          </div>
           <h1>{matrix.roleName}</h1>
-          <p>Status: {matrix.status}. Published versions are read-only.</p>
         </div>
         <div className="admin-header-actions">
-          <span className="tag tag-dark">Matrix editor</span>
           <Button asChild variant="secondary" size="sm">
             <Link href={`/admin/matrices/${roleId}/preview`}>
               Preview version <span aria-hidden="true">→</span>
             </Link>
           </Button>
-          <small className="muted" style={{ fontFamily: "var(--font-mono)", fontSize: 10 }}>
-            {matrix.status === "published" && matrix.publishedAt ? `Published ${new Date(matrix.publishedAt).toLocaleDateString()}` : "Draft — save before publishing"}
-          </small>
         </div>
       </header>
 
       {matrix.status === "published" && (
-        <div className="new-version-banner">
-          <p>
-            <strong>Published · v{matrix.version}</strong> — this version is immutable. Create a new draft to edit.
-          </p>
-          <form action={createDraft}>
-            <input type="hidden" name="roleId" value={roleId} />
-            <Button variant="dark" type="submit" size="sm">
-              Create new version <span aria-hidden="true">→</span>
-            </Button>
-          </form>
-        </div>
+        <form action={createDraft} style={{ margin: "18px 0 14px" }}>
+          <input type="hidden" name="roleId" value={roleId} />
+          <Button variant="dark" type="submit" size="sm">
+            Create new version <span aria-hidden="true">→</span>
+          </Button>
+        </form>
       )}
 
       <section className="admin-matrix-strip" aria-label="Matrix overview">
