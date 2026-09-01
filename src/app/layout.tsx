@@ -17,5 +17,5 @@ export const metadata: Metadata = {
 export const viewport: Viewport = { width: "device-width", initialScale: 1 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="en" data-scroll-behavior="smooth"><body data-design-contract="kaushal-frame-adaptation-v1"><a className="skip-link" href="#main-content">Skip to main content</a><div className="site-frame"><AppNavigation/><div className="content-frame">{children}</div></div></body></html>;
+  return <html lang="en" data-scroll-behavior="smooth"><body data-design-contract="kaushal-frame-adaptation-v1" suppressHydrationWarning><a className="skip-link" href="#main-content">Skip to main content</a><div className="site-frame"><AppNavigation/><div className="content-frame">{children}</div></div></body></html>;
 }
