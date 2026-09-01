@@ -163,5 +163,24 @@ function AssessmentResults({ session }: { session: Session }) {
 }
 
 function LearningPlan({ session, onComplete, busy }: { session: Session; onComplete: (item: Recommendation) => void; busy: boolean }) {
-  return <section className="surface recommendation-card"><div className="section-label"><span className="tag tag-dark">Learning plan</span><span className="muted">Prioritized from current gaps</span></div><h2>Start with the highest-priority gaps</h2>{session.recommendations.length === 0 ? <p className="muted">No verified course is available for the current gaps.</p> : <div className="recommendation-list">{session.recommendations.map((item) => <div className="recommendation-row" key={item.id}><div><strong>{item.rank}. {item.title}</strong><div className="result-meta">{item.provider ?? "iGOT catalog"} {item.duration ? `· ${item.duration}` : ""}<br/>{item.rationale}</div></div><Button variant="secondary" type="button" onClick={() => onComplete(item)} disabled={busy}>Mark complete <span aria-hidden="true">→</span></Button></div>)}</div>}{session.reassessmentInvited && <div className="alert" style={{ marginTop: 20 }}>A course completion is recorded. Reassessment is available when you are ready.</div>}</section>;
+  const [pending, setPending] = useState<Recommendation | null>(null);
+  const [completedIds, setCompletedIds] = useState<Set<string>>(() => new Set());
+  const isCompleted = (item: Recommendation) => completedIds.has(item.courseId) || session.history.some((h) => h.courseTitle === item.title);
+
+  async function confirm() {
+    if (!pending) return;
+    const item = pending;
+    setPending(null);
+    setCompletedIds((prev) => {
+      const next = new Set(prev);
+      next.add(item.courseId);
+      return next;
+    });
+    await onComplete(item);
+  }
+
+  return <><section className="surface recommendation-card"><div className="section-label"><span className="tag tag-dark">Learning plan</span><span className="muted">Prioritized from current gaps</span></div><h2>Start with the highest-priority gaps</h2>{session.recommendations.length === 0 ? <p className="muted">No verified course is available for the current gaps.</p> : <div className="recommendation-list">{session.recommendations.map((item) => {
+    const completed = isCompleted(item);
+    return <div className="recommendation-row" key={item.id}><div><strong>{item.rank}. {item.title}</strong><div className="result-meta">{item.provider ?? "iGOT catalog"} {item.duration ? `· ${item.duration}` : ""}<br/>{item.rationale}</div></div><Button variant={completed ? "primary" : "secondary"} type="button" onClick={() => setPending(item)} disabled={busy || completed}>{completed ? "Completed ✓" : <>Mark complete <span aria-hidden="true">→</span></>}</Button></div>;
+  })}</div>}{session.reassessmentInvited && <div className="alert" style={{ marginTop: 20 }}>A course completion is recorded. Reassessment is available when you are ready.</div>}</section>{pending && <div className="kaushal-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="confirm-complete-title" onClick={() => !busy && setPending(null)}><div className="kaushal-modal" onClick={(e) => e.stopPropagation()}><h3 id="confirm-complete-title">Mark as complete?</h3><p>This will record <strong>{pending.title}</strong> in your learning history and invite a reassessment. You can’t undo this from here.</p><div className="kaushal-modal-actions"><Button variant="secondary" type="button" onClick={() => setPending(null)} disabled={busy}>Cancel</Button><Button variant="primary" type="button" onClick={() => { void confirm(); }} disabled={busy}>{busy ? "Saving…" : "Confirm"}</Button></div></div></div>}</>;
 }
