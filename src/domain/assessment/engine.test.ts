@@ -63,16 +63,16 @@ describe("AssessmentEngine", () => {
     });
   });
 
-  it("enforces 7-10 personalized questions and at most five clarification questions", async () => {
+  it("enforces 4-5 personalized questions and at most three clarification questions", async () => {
     const engine = new AssessmentEngine(new InMemoryAssessmentStore(), () => "assessment-1");
     await engine.start("official-1", matrix());
     await engine.submitRound("assessment-1", submission(1, [2]));
-    const shortRound2 = await engine.submitRound("assessment-1", submission(2, [2, 2, 2, 2, 2, 2]));
+    const shortRound2 = await engine.submitRound("assessment-1", submission(2, [2, 2, 2]));
     expect(shortRound2).toEqual({ ok: false, error: expect.objectContaining({ code: "INVALID_QUESTION_COUNT" }) });
 
-    const acceptedRound2 = await engine.submitRound("assessment-1", submission(2, [2, 2, 2, 2, 2, 2, 2]));
+    const acceptedRound2 = await engine.submitRound("assessment-1", submission(2, [2, 2, 2, 2]));
     expect(acceptedRound2.ok).toBe(true);
-    const longRound3 = await engine.submitRound("assessment-1", submission(3, [2, 2, 2, 2, 2, 2]));
+    const longRound3 = await engine.submitRound("assessment-1", submission(3, [2, 2, 2, 2]));
     expect(longRound3).toEqual({ ok: false, error: expect.objectContaining({ code: "INVALID_QUESTION_COUNT" }) });
   });
 
@@ -80,7 +80,7 @@ describe("AssessmentEngine", () => {
     const engine = new AssessmentEngine(new InMemoryAssessmentStore(), () => "assessment-1");
     await engine.start("official-1", matrix());
     await engine.submitRound("assessment-1", submission(1, [4, 4, 4]));
-    await engine.submitRound("assessment-1", submission(2, [4, 4, 4, 4, 4, 4, 4]));
+    await engine.submitRound("assessment-1", submission(2, [4, 4, 4, 4]));
     const result = await engine.submitRound("assessment-1", submission(3, [4]));
     expect(result).toEqual({ ok: false, error: expect.objectContaining({ code: "ROUND_NOT_ALLOWED" }) });
   });
@@ -90,8 +90,8 @@ describe("AssessmentEngine", () => {
     const engine = new AssessmentEngine(store, () => "assessment-1");
     await engine.start("official-1", matrix());
     await engine.submitRound("assessment-1", submission(1, [1]));
-    await engine.submitRound("assessment-1", submission(2, [1, 5, 1, 5, 1, 5, 1]));
-    const result = await engine.submitRound("assessment-1", submission(3, [1, 5, 1, 5, 1]));
+    await engine.submitRound("assessment-1", submission(2, [1, 5, 1, 5]));
+    const result = await engine.submitRound("assessment-1", submission(3, [1, 5, 1]));
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value.status).toBe("completed");
