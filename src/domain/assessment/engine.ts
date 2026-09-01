@@ -1,3 +1,4 @@
+import { isValidQuestionCount } from "./round-limits";
 import { scoreAssessment } from "./scoring";
 import type {
   Assessment,
@@ -102,7 +103,7 @@ export class AssessmentEngine {
 
   private validateQuestionCount(submission: RoundSubmission): Result<never> | null {
     const count = submission.questions.length;
-    if (count === 0 || (submission.round === 2 && (count < 7 || count > 10)) || (submission.round === 3 && count > 5)) {
+    if (!isValidQuestionCount(submission.round, count)) {
       return failure("INVALID_QUESTION_COUNT", `Round ${submission.round} contains ${count} questions.`, { round: submission.round, count });
     }
     return null;

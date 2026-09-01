@@ -124,7 +124,7 @@ export function AppNavigation() {
           </>
         ) : officialName ? (
           <>
-            <Link href="/learner" className="nav-profile" aria-label={`Go to workspace, signed in as ${officialName}`}>
+            <Link href="/learner/plan" className="nav-profile" aria-label={`Go to workspace, signed in as ${officialName}`}>
               <span className="nav-profile-status" aria-hidden="true" />
               <span>
                 <small>Signed in as</small>
