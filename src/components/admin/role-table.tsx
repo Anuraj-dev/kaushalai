@@ -37,13 +37,13 @@ export function RoleTable({ roles }: { roles: AdminRoleSummary[] }) {
           />
         </label>
         <div className="admin-filter-group" role="group" aria-label="Filter by status">
-          <button type="button" className="admin-filter-pill" aria-pressed={status === "all"} onClick={() => setStatus("all")}>
+          <button type="button" className={`admin-filter-pill ${status === "all" ? "is-active" : ""}`} aria-pressed={status === "all"} onClick={() => setStatus("all")}>
             All
           </button>
-          <button type="button" className="admin-filter-pill" aria-pressed={status === "draft"} onClick={() => setStatus("draft")}>
+          <button type="button" className={`admin-filter-pill ${status === "draft" ? "is-active" : ""}`} aria-pressed={status === "draft"} onClick={() => setStatus("draft")}>
             Draft
           </button>
-          <button type="button" className="admin-filter-pill" aria-pressed={status === "published"} onClick={() => setStatus("published")}>
+          <button type="button" className={`admin-filter-pill ${status === "published" ? "is-active" : ""}`} aria-pressed={status === "published"} onClick={() => setStatus("published")}>
             Published
           </button>
         </div>

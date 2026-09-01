@@ -35,15 +35,21 @@ export function OfficialTable({ officials }: { officials: AdminOfficialSummary[]
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search official, e.g. A-001" aria-label="Search officials" />
         </label>
         <div className="admin-filter-group" role="group" aria-label="Filter by assessment">
+          <span className="muted" style={{ fontFamily: "var(--font-mono)", fontSize: 9, marginRight: 4, alignSelf: "center" }}>
+            Assessment
+          </span>
           {(["all", "not_started", "active", "completed", "provisional"] as const).map((value) => (
-            <button key={value} type="button" className="admin-filter-pill" aria-pressed={assessment === value} onClick={() => setAssessment(value)}>
+            <button key={`a-${value}`} type="button" className={`admin-filter-pill ${assessment === value ? "is-active" : ""}`} aria-pressed={assessment === value} onClick={() => setAssessment(value)}>
               {value.replaceAll("_", " ")}
             </button>
           ))}
         </div>
         <div className="admin-filter-group" role="group" aria-label="Filter by reassessment">
+          <span className="muted" style={{ fontFamily: "var(--font-mono)", fontSize: 9, marginRight: 4, alignSelf: "center" }}>
+            Reassessment
+          </span>
           {(["all", "eligible", "not_due"] as const).map((value) => (
-            <button key={value} type="button" className="admin-filter-pill" aria-pressed={reassessment === value} onClick={() => setReassessment(value)}>
+            <button key={`r-${value}`} type="button" className={`admin-filter-pill ${reassessment === value ? "is-active" : ""}`} aria-pressed={reassessment === value} onClick={() => setReassessment(value)}>
               {value.replaceAll("_", " ")}
             </button>
           ))}
