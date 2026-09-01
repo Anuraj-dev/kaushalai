@@ -87,10 +87,11 @@ test("primary official completes the adaptive path at desktop", async ({ page })
 
 test("MOSPI-0003 lands on the persisted learning path", async ({ page }) => {
   test.setTimeout(60_000);
-  await page.goto("/learner");
+  await page.goto("/learner/login");
   await page.getByRole("button", { name: "Change credentials" }).click();
   await page.getByRole("button", { name: "MOSPI-0003" }).click();
   await page.getByRole("button", { name: "Sign in" }).click();
+  await expect(page).toHaveURL(/\/learner$/);
   await expect(page.locator(".question-list")).toHaveCount(0);
   await expect(page.getByText("Round 1", { exact: true })).toHaveCount(0);
   await expect(page.getByText(/Assessment result/)).toBeVisible();
