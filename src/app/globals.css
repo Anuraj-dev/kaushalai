@@ -636,7 +636,7 @@ button:disabled { cursor: not-allowed; }
 .admin-competency-row input { accent-color: var(--ink); }
 .admin-competency-row select { width: 100%; padding: 9px 8px; border: 1px solid var(--line-strong); border-radius: var(--radius-xs); background: var(--paper); color: var(--ink); }
 .admin-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--line); }
-.admin-actions button:not(.kaushal-button), .admin-shell button:not(.kaushal-button) { min-height: 44px; padding: 10px 15px; border: 1px solid var(--ink); border-radius: var(--radius-sm); background: var(--ink); color: var(--paper); font-size: 12px; font-weight: 700; }
+.admin-actions button:not(.kaushal-button):not(.admin-filter-pill), .admin-shell button:not(.kaushal-button):not(.admin-filter-pill) { min-height: 44px; padding: 10px 15px; border: 1px solid var(--ink); border-radius: var(--radius-sm); background: var(--ink); color: var(--paper); font-size: 12px; font-weight: 700; }
 .admin-actions .kaushal-button:first-child { background: var(--paper); color: var(--ink); }
 .back-link { display: inline-block; margin-bottom: 24px; }
 .matrix-preview > .page-header { margin-bottom: 24px; }
