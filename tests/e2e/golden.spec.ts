@@ -1,5 +1,25 @@
 import { test, expect } from "@playwright/test";
 
+test("landing feature cards use the updated copy", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "Assess step by step" })).toBeVisible();
+  await expect(page.getByText("Begin with the basics and follow up only where more clarity is needed", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Publish with a paper trail" })).toBeVisible();
+  await expect(page.getByText("Build, review, and publish competency matrices with a clear version history", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Track progress over time" })).toBeVisible();
+  await expect(page.getByText("New progress is recorded while previous assessment results stay intact", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "From skill gaps to the right learning path" })).toBeVisible();
+  await expect(page.getByText("Each recommendation comes from what the role requires and what the assessment shows", { exact: true })).toBeVisible();
+  await expect(page.getByText("Personalized learning for public officials", { exact: true })).toBeVisible();
+  const officialCta = page.getByRole("link", { name: "Continue as an official" });
+  const administratorCta = page.getByRole("link", { name: "Continue as administrator" });
+  await expect(officialCta).toHaveClass(/kaushal-button-primary/);
+  await expect(administratorCta).toHaveClass(/kaushal-button-secondary/);
+  await expect(officialCta).not.toHaveClass(/(?:^|\s)button(?:\s|$)/);
+  await expect(administratorCta).not.toHaveClass(/(?:^|\s)button(?:\s|$)/);
+  expect(await page.locator("body").innerText()).not.toMatch(/\./);
+});
+
 test("administrator can inspect all ten published matrices", async ({ page }) => {
   await page.goto("/admin");
   await expect(page.getByRole("heading", { name: "Role matrices" })).toBeVisible();
@@ -71,6 +91,9 @@ test("learner viewport has no horizontal overflow", async ({ page }) => {
   await expect(page.getByRole("heading", { name: /Sign in to your official workspace/ })).toBeVisible();
   await expect(page.getByLabel("Employee code")).toHaveValue("MOSPI-0001");
   await expect(page.getByRole("button", { name: "Change credentials" })).toBeVisible();
+  const signInButton = page.getByRole("button", { name: "Sign in" });
+  await expect(signInButton).toHaveClass(/kaushal-button-primary/);
+  await expect(signInButton).not.toHaveClass(/(?:^|\s)button(?:\s|$)/);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
 });
 

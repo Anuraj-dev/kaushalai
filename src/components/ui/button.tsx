@@ -5,25 +5,25 @@ import * as React from "react";
 import { cn } from "@/lib/utils";
 
 const buttonVariants = cva(
-  "button inline-flex items-center justify-center whitespace-nowrap rounded-[var(--radius-sm)] text-xs font-bold leading-none transition-[transform,box-shadow,background-color,border-color] duration-150 outline-offset-2 focus-visible:outline focus-visible:outline-[3px] focus-visible:outline-[var(--ink)] disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-45 disabled:shadow-none disabled:transform-none [&_svg]:pointer-events-none [&_svg]:shrink-0",
+  "kaushal-button inline-flex items-center justify-center whitespace-nowrap rounded-lg text-sm font-medium leading-none transition-colors outline-offset-2 focus-visible:outline focus-visible:outline-2 disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none disabled:transform-none [&_svg]:pointer-events-none [&_svg]:shrink-0",
   {
     variants: {
       variant: {
-        default: "button-primary",
-        primary: "button-primary",
-        destructive: "button-danger",
-        danger: "button-danger",
-        outline: "button-secondary",
-        secondary: "button-secondary",
-        dark: "button-dark",
-        light: "button-light",
-        ghost: "border-transparent bg-transparent text-[var(--muted)] hover:text-[var(--ink)]",
-        link: "min-h-0 border-0 bg-transparent px-0 py-0 text-[var(--ink)] underline-offset-4 hover:underline",
+        default: "kaushal-button-primary",
+        primary: "kaushal-button-primary",
+        destructive: "kaushal-button-danger",
+        danger: "kaushal-button-danger",
+        outline: "kaushal-button-secondary",
+        secondary: "kaushal-button-secondary",
+        dark: "kaushal-button-dark",
+        light: "kaushal-button-light",
+        ghost: "kaushal-button-ghost",
+        link: "kaushal-button-link",
       },
       size: {
-        default: "min-h-11 px-[17px] py-2",
-        sm: "min-h-9 rounded-[var(--radius-sm)] px-[13px] text-[11px]",
-        lg: "min-h-12 px-8",
+        default: "h-9 px-4 py-2",
+        sm: "h-8 rounded-lg px-3 text-xs",
+        lg: "h-10 rounded-lg px-8",
         icon: "h-9 w-9",
       },
     },
