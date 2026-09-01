@@ -2,11 +2,16 @@
 
 import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
+import { Plus } from "lucide-react";
 import { CATALOG_GUIDE_IDENTITY_COPY } from "@/ai/contracts";
 import { Button } from "@/components/ui/button";
 
 const GREETING = "How can I help you?";
 const DEFAULT_CHIPS = ["Why is this first?", "Which gap does this address?"];
+
+function guideStorageKey(assessmentId: string) {
+  return `kaushal-guide-${assessmentId}`;
+}
 
 type CitedCourse = {
   courseId: string;
@@ -93,6 +98,67 @@ export function CatalogGuidePanel({ assessmentId, recommendedCourseIds, chips = 
   const [loading, setLoading] = useState(false);
   const [exchanges, setExchanges] = useState<Exchange[]>([]);
 
+  // Persist sessions across hard refresh; clears only on explicit new chat
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(guideStorageKey(assessmentId));
+      if (raw) {
+        const parsed = JSON.parse(raw) as Exchange[];
+        if (Array.isArray(parsed)) setExchanges(parsed);
+      } else {
+        setExchanges([]);
+      }
+    } catch {
+      setExchanges([]);
+    }
+    // Reset greeting animation for new assessment session
+    greetingPlayed.current = false;
+  }, [assessmentId]);
+
+  useEffect(() => {
+    try {
+      if (exchanges.length === 0) {
+        window.localStorage.removeItem(guideStorageKey(assessmentId));
+      } else {
+        window.localStorage.setItem(guideStorageKey(assessmentId), JSON.stringify(exchanges));
+      }
+    } catch {
+      // ignore quota errors
+    }
+  }, [assessmentId, exchanges]);
+
+  function newChat() {
+    setExchanges([]);
+    setQuestion("");
+    try {
+      window.localStorage.removeItem(guideStorageKey(assessmentId));
+    } catch {}
+    greetingPlayed.current = false;
+    if (open) {
+      if (prefersReducedMotion()) {
+        setTypedGreeting(GREETING);
+        setTyping(false);
+        greetingPlayed.current = true;
+      } else {
+        setTypedGreeting("");
+        setTyping(true);
+        let index = 0;
+        const timer = window.setInterval(() => {
+          index += 1;
+          setTypedGreeting(GREETING.slice(0, index));
+          if (index >= GREETING.length) {
+            window.clearInterval(timer);
+            greetingPlayed.current = true;
+            setTyping(false);
+          }
+        }, 55);
+      }
+    } else {
+      setTypedGreeting("");
+      setTyping(false);
+    }
+  }
+
   useEffect(() => {
     if (!open) return;
     if (greetingPlayed.current || prefersReducedMotion()) {
@@ -167,6 +233,9 @@ export function CatalogGuidePanel({ assessmentId, recommendedCourseIds, chips = 
           <p className="catalog-guide-kicker">Learning path guide</p>
           <h2 id={titleId}>Kaushal</h2>
         </div>
+        <button className="catalog-guide-new-chat" type="button" onClick={newChat} aria-label="New chat" title="New chat">
+          <Plus size={18} strokeWidth={2} />
+        </button>
         <button className="catalog-guide-close" type="button" onClick={() => { setOpen(false); launcherRef.current?.focus(); }}>Close</button>
       </header>
       <div className="catalog-guide-thread" ref={threadRef}>

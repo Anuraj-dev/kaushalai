@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ArrowRight, Eye, EyeOff, Pencil } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { CatalogGuidePanel } from "@/components/learner/catalog-guide-panel";
 import { Button } from "@/components/ui/button";
 
@@ -9,51 +9,50 @@ type Official = { id: string; name: string; jobRoleName: string; employeeCode: s
 type Question = { id: string; competencyId: string; competencyName: string; format: "single_choice" | "short_text"; prompt: string; options: Array<{ id: string; text: string }> };
 type Result = { competencyId: string; competencyName: string; assessedLevel: number; requiredLevel: number; gap: number; priority: number; confidence: number; supported: boolean; evidence: Array<{ reason: string; source: string }> };
 type Recommendation = { id: string; courseId: string; competencyId: string; title: string; provider: string | null; duration: string | null; rank: number; rationale: string };
-type Session = { official: Official; matrix: { versionId: string; version: number; competencies: Array<{ competencyId: string; name: string; requiredLevel: number; importance: number }> }; history: Array<{ id: string; competencyName: string; source: string; level: number; courseTitle: string | null }>; assessment: { id: string; status: string; currentRound: number | null; roundKind: string | null; questions: Question[]; provisional: boolean }; results: Result[]; recommendations: Recommendation[]; reassessmentInvited: boolean; dashboard: { supportedCompetencies: number; totalCompetencies: number; openGaps: number; completedCourses: number } };
+type Session = { official: Official; matrix: { versionId: string; version: number; competencies: Array<{ competencyId: string; name: string; requiredLevel: number; importance: number }> }; history: Array<{ id: string; competencyName: string; source: string; level: number; courseTitle: string | null; courseId: string | null }>; assessment: { id: string; status: string; currentRound: number | null; roundKind: string | null; questions: Question[]; provisional: boolean }; results: Result[]; recommendations: Recommendation[]; reassessmentInvited: boolean; dashboard: { supportedCompetencies: number; totalCompetencies: number; openGaps: number; completedCourses: number } };
 
 const storageKey = "kaushal-active-assessment";
 const officialStorageKey = "kaushal-active-official";
 const request = async (url: string, init?: RequestInit) => { const response = await fetch(url, init); const body = await response.json(); if (!response.ok) throw new Error(body.error ?? "Something went wrong"); return body; };
 
 export function LearnerJourney() {
-  const [officials, setOfficials] = useState<Official[]>([]);
+  const router = useRouter();
   const [session, setSession] = useState<Session | null>(null);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [transitionMessage, setTransitionMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [signedIn, setSignedIn] = useState(false);
-  const [showCredentials, setShowCredentials] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
-  const [employeeCode, setEmployeeCode] = useState("MOSPI-0001");
-  const [password, setPassword] = useState("kaushal-demo");
-  const [rememberDevice, setRememberDevice] = useState(true);
 
   useEffect(() => {
     let mounted = true;
     (async () => {
       try {
         const saved = window.localStorage.getItem(storageKey);
-        const list = await request("/api/officials?selectable=true");
-        if (mounted) setOfficials(list);
-        if (saved) {
-          try {
-            const restored = await request(`/api/learner/session?assessmentId=${encodeURIComponent(saved)}`);
-            if (mounted) {
-              setSession(restored);
-              window.localStorage.setItem(officialStorageKey, JSON.stringify({ name: restored.official.name }));
-              window.dispatchEvent(new Event("kaushal-assessment-started"));
-            }
-          } catch {
-            window.localStorage.removeItem(storageKey);
+        if (!saved) {
+          if (mounted) {
+            router.replace("/learner/login");
+            setLoading(false);
           }
+          return;
+        }
+        try {
+          const restored = await request(`/api/learner/session?assessmentId=${encodeURIComponent(saved)}`);
+          if (mounted) {
+            setSession(restored);
+            window.localStorage.setItem(officialStorageKey, JSON.stringify({ name: restored.official.name }));
+            window.dispatchEvent(new Event("kaushal-assessment-started"));
+          }
+        } catch {
+          window.localStorage.removeItem(storageKey);
+          window.localStorage.removeItem(officialStorageKey);
+          if (mounted) router.replace("/learner/login");
         }
       } catch (cause) { if (mounted) setError(cause instanceof Error ? cause.message : "Unable to load the official workspace"); }
       finally { if (mounted) setLoading(false); }
     })();
     return () => { mounted = false; };
-  }, []);
+  }, [router]);
 
   const currentQuestions = useMemo(() => session?.assessment.questions ?? [], [session]);
   const answered = useMemo(() => currentQuestions.filter((question) => answers[question.id]?.trim()).length, [answers, currentQuestions]);
@@ -63,22 +62,6 @@ export function LearnerJourney() {
     try { const value = await request("/api/learner/session", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, officialId }) }); setSession(value); window.localStorage.setItem(storageKey, value.assessment.id); window.localStorage.setItem(officialStorageKey, JSON.stringify({ name: value.official.name })); window.dispatchEvent(new Event("kaushal-assessment-started")); setAnswers({}); }
     catch (cause) { setError(cause instanceof Error ? cause.message : "Unable to start assessment"); }
     finally { setBusy(false); }
-  }
-
-  function signIn(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const official = officials.find((item) => item.employeeCode.toLowerCase() === employeeCode.trim().toLowerCase());
-    if (!employeeCode.trim() || !password.trim()) {
-      setError("Enter your employee code and password to continue.");
-      return;
-    }
-    if (!official) {
-      setError("We could not find that employee code. Try MOSPI-0001, MOSPI-0002, or MOSPI-0003.");
-      return;
-    }
-    setError(null);
-    setSignedIn(true);
-    void start(official.id);
   }
 
   async function submit() {
@@ -98,6 +81,7 @@ export function LearnerJourney() {
     setSession(null);
     setAnswers({});
     setError(null);
+    router.push("/learner/login");
   }
 
   async function completeCourse(item: Recommendation) {
@@ -109,36 +93,14 @@ export function LearnerJourney() {
   }
 
   if (loading) return <LoadingWorkspace />;
-  if (error && !session && !signedIn) return <div className="surface error-state"><div className="alert" role="alert">{error}</div><Button variant="primary" onClick={() => window.location.reload()}>Try again <span aria-hidden="true">→</span></Button></div>;
-  if (!session && !signedIn) return <section className="login-page" aria-labelledby="login-title">
-    <div className="login-intro">
-      <div className="login-title-wrap">
-        <h1 id="login-title">Sign in to your<br />official workspace</h1>
-        <p>Use your employee code to access your competency assessment. Assessment remains pinned to its starting matrix version.</p>
-      </div>
-    </div>
-    <form className="login-card" onSubmit={signIn}>
-      <div className="login-fields">
-        <label htmlFor="employee-code">Employee code</label>
-        <div className={`login-input-wrap ${error ? "has-error" : ""}`}><input id="employee-code" value={employeeCode} onChange={(event) => setEmployeeCode(event.target.value)} autoComplete="username" placeholder="MOSPI-0001" /><Pencil size={16} strokeWidth={1.7} aria-hidden="true" /></div>
-        <span className="field-help">Enter your employee code to continue</span>
-        <label htmlFor="password">Password</label>
-        <div className="login-input-wrap"><input id="password" type={showPassword ? "text" : "password"} value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" placeholder="Enter your password" /><button className="icon-button" type="button" onClick={() => setShowPassword((value) => !value)} aria-label={showPassword ? "Hide password" : "Show password"}>{showPassword ? <EyeOff size={18} strokeWidth={1.7} /> : <Eye size={18} strokeWidth={1.7} />}</button></div>
-        <label className="remember-row"><input type="checkbox" checked={rememberDevice} onChange={(event) => setRememberDevice(event.target.checked)} /> <span>Remember this device</span></label>
-      </div>
-      {error && <div className="login-error" role="alert">{error}</div>}
-      <Button className="login-submit" variant="primary" type="submit" disabled={busy}>Sign in <ArrowRight size={18} strokeWidth={1.7} /></Button>
-      <button className="credential-toggle" type="button" onClick={() => { setShowCredentials((value) => !value); setError(null); }}><span>{showCredentials ? "Use prefilled credentials" : "Change credentials"}</span><span aria-hidden="true">{showCredentials ? "↑" : "↓"}</span></button>
-      {showCredentials && <div className="credential-note"><strong>Demo credentials</strong><p>Use one of the seeded employee codes to enter as a different official. This prototype stores no real credentials.</p><div className="credential-codes">{["MOSPI-0001", "MOSPI-0002", "MOSPI-0003"].map((code) => <button className="credential-code-button" key={code} type="button" onClick={() => { setEmployeeCode(code); setError(null); }}>{code}</button>)}</div></div>}
-    </form>
-  </section>;
+  if (error && !session) return <div className="surface error-state"><div className="alert" role="alert">{error}</div><Button variant="primary" onClick={() => window.location.reload()}>Try again <span aria-hidden="true">→</span></Button></div>;
 
-  if (!session) return <div className="loading-state surface"><span className="loading-mark" aria-hidden="true"/><p>Opening the official workspace…</p></div>;
+  if (!session) return <div className="loading-state surface"><span className="loading-mark" aria-hidden="true"/><p>Redirecting to sign in…</p></div>;
 
   const isComplete = session.assessment.status === "completed" || session.assessment.status === "provisional";
   const currentStep = isComplete ? 4 : session.assessment.currentRound ?? 1;
   const steps = [{ number: "01", label: "Baseline", value: 1 }, { number: "02", label: "Adaptive", value: 2 }, { number: "03", label: "Clarify", value: 3 }, { number: "04", label: "Learning plan", value: 4 }];
-  return <><div className="workspace-back"><Button className="back-button" variant="ghost" type="button" onClick={leaveAssessment} disabled={busy}>← Change official</Button></div><header className="page-header learner-header"><div><h1>{session.official.name}</h1><p>{session.official.jobRoleName}</p></div>{session.reassessmentInvited && <Button variant="secondary" onClick={() => start(session.official.id, "reassess")} disabled={busy}>Start reassessment <span aria-hidden="true">→</span></Button>}</header><ol className="stepper" aria-label="Assessment progress">{steps.map((step) => { const state = currentStep === step.value ? "current" : currentStep > step.value ? "done" : ""; return <li className={`step ${state}`} key={step.value} aria-current={state === "current" ? "step" : undefined}><b>{step.number}</b><span>{step.label}</span><span className="sr-only">{state === "current" ? "Current step" : state === "done" ? "Completed" : "Upcoming"}</span></li>; })}</ol>{error && <div className="alert" role="alert">{error}</div>}<div className="journey-grid"><div>{transitionMessage ? <RoundTransition message={transitionMessage}/> : <>{!isComplete && currentQuestions.length > 0 && <QuestionForm key={session.assessment.currentRound} questions={currentQuestions} answers={answers} setAnswers={setAnswers} onSubmit={submit} busy={busy} round={session.assessment.currentRound ?? 1} answered={answered}/>} {isComplete && <Results session={session} onComplete={completeCourse} busy={busy}/>}</>}</div><aside className="side-panel"><section className="surface glance-panel"><div className="panel-heading"><span className="tag tag-dark">At a glance</span><span className="panel-mark" aria-hidden="true">↗</span></div><div className="metric-strip"><div className="metric metric-primary"><strong>{session.dashboard.supportedCompetencies}/{session.dashboard.totalCompetencies}</strong><span>Supported</span></div><div className="metric"><strong>{session.dashboard.openGaps}</strong><span>Open gaps</span></div><div className="metric"><strong>{session.dashboard.completedCourses}</strong><span>Courses done</span></div></div></section><section className="surface history-panel"><div className="panel-heading"><span className="tag">Learning history</span><span className="panel-mark" aria-hidden="true">↘</span></div>{session.history.length === 0 ? <p className="muted">No prior course evidence.</p> : session.history.slice(0, 4).map((item) => <div className="history-item" key={item.id}><strong>{item.competencyName}</strong><span>{item.courseTitle ?? item.source} · level {item.level}</span></div>)}</section></aside></div></>;
+  return <><div className="workspace-back"><Button className="back-button" variant="ghost" type="button" onClick={leaveAssessment} disabled={busy}>← Change official</Button></div><header className="page-header learner-header"><div><h1>{session.official.name}</h1><p>{session.official.jobRoleName}</p></div>{session.reassessmentInvited && <Button variant="secondary" onClick={() => start(session.official.id, "reassess")} disabled={busy}>Start reassessment <span aria-hidden="true">→</span></Button>}</header><ol className="stepper" aria-label="Assessment progress">{steps.map((step) => { const state = currentStep === step.value ? "current" : currentStep > step.value ? "done" : ""; return <li className={`step ${state}`} key={step.value} aria-current={state === "current" ? "step" : undefined}><b>{step.number}</b><span>{step.label}</span><span className="sr-only">{state === "current" ? "Current step" : state === "done" ? "Completed" : "Upcoming"}</span></li>; })}</ol>{error && <div className="alert" role="alert">{error}</div>}<div className="journey-grid"><div>{transitionMessage ? <RoundTransition message={transitionMessage}/> : <>{!isComplete && currentQuestions.length > 0 && <QuestionForm key={session.assessment.currentRound} questions={currentQuestions} answers={answers} setAnswers={setAnswers} onSubmit={submit} busy={busy} round={session.assessment.currentRound ?? 1} answered={answered}/>} {isComplete && <LearningPlan session={session} onComplete={completeCourse} busy={busy}/>}</>}</div><aside className="side-panel">{isComplete ? <AssessmentResults session={session} /> : null}<section className="surface history-panel"><div className="panel-heading"><span className="tag">Learning history</span><span className="panel-mark" aria-hidden="true">↘</span></div>{session.history.length === 0 ? <p className="muted">No prior course evidence.</p> : session.history.slice(0, 4).map((item) => <div className="history-item" key={item.id}><strong>{item.competencyName}</strong><span>{item.courseTitle ?? item.source} · level {item.level}</span></div>)}</section></aside></div><CatalogGuidePanel assessmentId={session.assessment.id} recommendedCourseIds={session.recommendations.map((item) => item.courseId)} chips={["Why is this first?", "Which gap does this address?", ...session.recommendations.slice(0, 1).map((item) => `Why was ${item.title} recommended?`)]} /></>;
 }
 
 function LoadingWorkspace() {
@@ -196,6 +158,23 @@ function QuestionForm({ questions, answers, setAnswers, onSubmit, busy, round, a
   </form>;
 }
 
-function Results({ session, onComplete, busy }: { session: Session; onComplete: (item: Recommendation) => void; busy: boolean }) {
-  return <><section className="surface results-card"><div className="section-label"><span className="tag tag-lime">Assessment result</span>{session.assessment.provisional && <span className="tag">Provisional</span>}</div><h2>{session.assessment.provisional ? "A useful result, with room to confirm" : "Your competency picture"}</h2><p className="muted">Scores are calculated from your answers. Course completion adds history and does not rewrite this result.</p><div className="result-list">{session.results.map((result) => <div className="result-row" key={result.competencyId}><div><strong>{result.competencyName}</strong><div className="result-meta">Assessed {result.assessedLevel.toFixed(1)} · Required {result.requiredLevel} · Gap {result.gap.toFixed(1)} · {result.supported ? "supported" : "needs more evidence"}</div></div><div className={`confidence ${result.supported ? "confidence-supported" : ""}`}>{Math.round(result.confidence * 100)}% confidence</div></div>)}</div></section><section className="surface recommendation-card"><div className="section-label"><span className="tag tag-dark">Learning plan</span><span className="muted">Prioritized from current gaps</span></div><h2>Start with the highest-priority gaps</h2>{session.recommendations.length === 0 ? <p className="muted">No verified course is available for the current gaps.</p> : <div className="recommendation-list">{session.recommendations.map((item) => <div className="recommendation-row" key={item.id}><div><strong>{item.rank}. {item.title}</strong><div className="result-meta">{item.provider ?? "iGOT catalog"} {item.duration ? `· ${item.duration}` : ""}<br/>{item.rationale}</div></div><Button variant="secondary" type="button" onClick={() => onComplete(item)} disabled={busy}>Mark complete <span aria-hidden="true">→</span></Button></div>)}</div>}{session.reassessmentInvited && <div className="alert" style={{ marginTop: 20 }}>A course completion is recorded. Reassessment is available when you are ready.</div>}</section><CatalogGuidePanel assessmentId={session.assessment.id} recommendedCourseIds={session.recommendations.map((item) => item.courseId)} chips={["Why is this first?", "Which gap does this address?", ...session.recommendations.slice(0, 1).map((item) => `Why was ${item.title} recommended?`)]} /></>;
+function AssessmentResults({ session }: { session: Session }) {
+  return <section className="surface results-card"><div className="section-label"><span className="tag tag-lime">Assessment result</span>{session.assessment.provisional && <span className="tag">Provisional</span>}</div><h2>{session.assessment.provisional ? "A useful result, with room to confirm" : "Your competency picture"}</h2><p className="muted">Scores are calculated from your answers. Course completion adds history and does not rewrite this result.</p><div className="result-list">{session.results.map((result) => <div className="result-row" key={result.competencyId}><div><strong>{result.competencyName}</strong><div className="result-meta">Assessed {result.assessedLevel.toFixed(1)} · Required {result.requiredLevel} · Gap {result.gap.toFixed(1)} · {result.supported ? "supported" : "needs more evidence"}</div></div><div className={`confidence ${result.supported ? "confidence-supported" : ""}`}>{Math.round(result.confidence * 100)}% confidence</div></div>)}</div></section>;
+}
+
+function LearningPlan({ session, onComplete, busy }: { session: Session; onComplete: (item: Recommendation) => void; busy: boolean }) {
+  const [pending, setPending] = useState<Recommendation | null>(null);
+  const isCompleted = (item: Recommendation) => session.history.some((h) => h.courseId === item.courseId);
+
+  async function confirm() {
+    if (!pending) return;
+    const item = pending;
+    setPending(null);
+    await onComplete(item);
+  }
+
+  return <><section className="surface recommendation-card"><div className="section-label"><span className="tag tag-dark">Learning plan</span><span className="muted">Prioritized from current gaps</span></div><h2>Start with the highest-priority gaps</h2>{session.recommendations.length === 0 ? <p className="muted">No verified course is available for the current gaps.</p> : <div className="recommendation-list">{session.recommendations.map((item) => {
+    const completed = isCompleted(item);
+    return <div className="recommendation-row" key={item.id}><div><strong>{item.rank}. {item.title}</strong><div className="result-meta">{item.provider ?? "iGOT catalog"} {item.duration ? `· ${item.duration}` : ""}<br/>{item.rationale}</div></div><Button variant={completed ? "primary" : "secondary"} type="button" onClick={() => setPending(item)} disabled={busy || completed}>{completed ? "Completed ✓" : <>Mark complete <span aria-hidden="true">→</span></>}</Button></div>;
+  })}</div>}{session.reassessmentInvited && <div className="alert" style={{ marginTop: 20 }}>A course completion is recorded. Reassessment is available when you are ready.</div>}</section>{pending && <div className="kaushal-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="confirm-complete-title" onClick={() => !busy && setPending(null)}><div className="kaushal-modal" onClick={(e) => e.stopPropagation()}><h3 id="confirm-complete-title">Mark as complete?</h3><p>This will record <strong>{pending.title}</strong> in your learning history and invite a reassessment. You can’t undo this from here.</p><div className="kaushal-modal-actions"><Button variant="secondary" type="button" onClick={() => setPending(null)} disabled={busy}>Cancel</Button><Button variant="primary" type="button" onClick={() => { void confirm(); }} disabled={busy}>{busy ? "Saving…" : "Confirm"}</Button></div></div></div>}</>;
 }

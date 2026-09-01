@@ -154,7 +154,7 @@ function persistResults(db: KaushalDatabase, assessmentId: string, result: Asses
   for (const item of result.competencies) insert.run(randomUUID(), assessmentId, item.competencyId, item.assessedLevel, item.requiredLevel, item.gap, item.priority, item.confidence, item.supported ? 1 : 0);
 }
 
-function session(db: KaushalDatabase, assessmentId: string) {
+export function session(db: KaushalDatabase, assessmentId: string) {
   const assessment = db.prepare(`SELECT a.*,v.version,m.job_role_id FROM assessments a JOIN matrix_versions v ON v.id=a.matrix_version_id
     JOIN competency_matrices m ON m.id=v.matrix_id WHERE a.id=?`).get(assessmentId) as Row | undefined;
   if (!assessment) return null;
@@ -169,9 +169,9 @@ function session(db: KaushalDatabase, assessmentId: string) {
     evidence: (db.prepare("SELECT rationale,source_type,reliability FROM evidence WHERE assessment_id=? AND competency_id=? ORDER BY created_at").all(assessmentId, row.competency_id) as Row[])
       .map((entry) => ({ reason: String(entry.rationale ?? "Assessment response"), source: String(entry.source_type), reliability: Number(entry.reliability) })),
   }));
-  const history = (db.prepare(`SELECT h.*,c.name competency_name,co.title course_title FROM learning_history h JOIN competencies c ON c.id=h.competency_id
+  const history = (db.prepare(`SELECT h.*,c.name competency_name,co.title course_title,cc.course_id course_id FROM learning_history h JOIN competencies c ON c.id=h.competency_id
     LEFT JOIN course_completions cc ON cc.id=h.source_id LEFT JOIN courses co ON co.id=cc.course_id WHERE h.official_id=? ORDER BY h.recorded_at DESC`).all(assessment.official_id) as Row[]).map((row) => ({
-    id: String(row.id), competencyName: String(row.competency_name), source: String(row.source_type), level: Number(row.level), reliability: Number(row.reliability), recordedAt: String(row.recorded_at), courseTitle: row.course_title ? String(row.course_title) : null,
+    id: String(row.id), competencyName: String(row.competency_name), source: String(row.source_type), level: Number(row.level), reliability: Number(row.reliability), recordedAt: String(row.recorded_at), courseTitle: row.course_title ? String(row.course_title) : null, courseId: row.course_id ? String(row.course_id) : null,
   }));
   const learning = new LearningService(db);
   let recommendations = learning.getPath(assessmentId) as Row[];
