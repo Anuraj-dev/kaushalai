@@ -76,7 +76,7 @@ export function RoleTable({ roles }: { roles: AdminRoleSummary[] }) {
                 .join(" ");
               return (
                 <tr key={role.roleId} data-status={role.status}>
-                  <th scope="row">
+                  <th scope="row" data-label="Role">
                     <div style={{ display: "grid", gap: 4 }}>
                       <strong style={{ fontWeight: 500, fontSize: 13 }}>{role.roleName}</strong>
                       <small className="muted" style={{ fontFamily: "var(--font-mono)", fontSize: 10 }}>
@@ -84,14 +84,14 @@ export function RoleTable({ roles }: { roles: AdminRoleSummary[] }) {
                       </small>
                     </div>
                   </th>
-                  <td>
+                  <td data-label="Status">
                     <span className={`status-pill status-pill--${role.status}`}>
                       <span className="status-pill__dot" aria-hidden="true" />
                       {role.status}
                     </span>
                   </td>
-                  <td>{role.competencyCount}</td>
-                  <td>
+                  <td data-label="Competencies">{role.competencyCount}</td>
+                  <td data-label="Coverage">
                     <div className={coverageClass}>
                       <div
                         className="coverage-bar"
@@ -111,8 +111,8 @@ export function RoleTable({ roles }: { roles: AdminRoleSummary[] }) {
                       </div>
                     </div>
                   </td>
-                  <td>{role.affectedOfficials}</td>
-                  <td>
+                  <td data-label="Officials">{role.affectedOfficials}</td>
+                  <td data-label="Action">
                     <Link
                       href={`/admin/matrices/${role.roleId}`}
                       className={`kaushal-button kaushal-button--sm ${role.status === "draft" ? "kaushal-button-dark" : "kaushal-button-secondary view-matrix-btn"}`}

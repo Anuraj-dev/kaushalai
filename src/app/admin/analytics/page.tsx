@@ -35,6 +35,7 @@ export default function AnalyticsPage() {
           <h1>Readiness and learning analytics</h1>
         </div>
       </header>
+      {isEmpty && <p className="analytics-demo-note"><span className="tag tag-lime">Demo preview</span> Showing sample data — no persisted assessments yet. Complete an assessment to see real organization evidence.</p>}
 
       <section className="admin-analytics-strip" aria-label="Readiness overview">
         <div className="admin-governance-metric">

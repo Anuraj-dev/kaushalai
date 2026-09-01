@@ -69,7 +69,7 @@ export function OfficialTable({ officials }: { officials: AdminOfficialSummary[]
               const isComplete = official.assignedCourses > 0 && pct === 100;
               return (
                 <tr key={official.id} data-status={assessmentStatus}>
-                  <th scope="row">
+                  <th scope="row" data-label="Official">
                     <div style={{ display: "grid", gap: 4 }}>
                       <strong style={{ fontWeight: 500, fontSize: 13 }}>{official.name}</strong>
                       <small className="muted" style={{ fontFamily: "var(--font-mono)", fontSize: 10 }}>
@@ -77,15 +77,15 @@ export function OfficialTable({ officials }: { officials: AdminOfficialSummary[]
                       </small>
                     </div>
                   </th>
-                  <td>{official.employeeCode}</td>
-                  <td>{official.roleName}</td>
-                  <td>
+                  <td data-label="Employee code">{official.employeeCode}</td>
+                  <td data-label="Job role">{official.roleName}</td>
+                  <td data-label="Assessment">
                     <span className={`status-pill status-pill--${assessmentStatus}`}>
                       <span className="status-pill__dot" aria-hidden="true" />
                       {assessmentStatus.replaceAll("_", " ")}
                     </span>
                   </td>
-                  <td>
+                  <td data-label="Courses">
                     <div className={`courses-cell ${isComplete ? "is-complete" : ""}`}>
                       <div className="courses-bar" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label={`${official.name} courses ${pct}%`}>
                         <span style={{ width: `${pct}%` }} />
@@ -98,7 +98,7 @@ export function OfficialTable({ officials }: { officials: AdminOfficialSummary[]
                       </div>
                     </div>
                   </td>
-                  <td>
+                  <td data-label="Reassessment">
                     <span className={`status-pill status-pill--${reassessKey}`}>
                       <span className="status-pill__dot" aria-hidden="true" />
                       {reassessKey.replaceAll("_", " ")}

@@ -65,7 +65,7 @@ export default async function MatrixPage({ params }: { params: Promise<{ roleId:
         <div className={`admin-governance-metric ${isReady ? "admin-governance-metric--ready" : ""}`}>
           <span>Publish readiness</span>
           <strong>{matrix.status === "published" ? "Published" : isReady ? "Ready" : "Not ready"}</strong>
-          <small>{isReady ? "Complete — can publish" : "Needs 6–8 and 100% coverage"}</small>
+          <small>{matrix.status === "published" ? `Immutable · v${matrix.version}` : isReady ? "Complete — can publish" : "Needs 6–8 and 100% coverage"}</small>
         </div>
       </section>
 

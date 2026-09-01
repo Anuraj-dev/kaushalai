@@ -12,7 +12,7 @@ export default function AdminPage() {
     ? Math.round(roles.reduce((sum, role) => sum + (role.competencyCount ? (role.coveredCompetencies / role.competencyCount) * 100 : 0), 0) / roles.length)
     : 0;
   const sumOfficials = roles.reduce((sum, role) => sum + role.affectedOfficials, 0);
-  const ready = roles.filter((role) => role.coveredCompetencies === role.competencyCount && role.competencyCount > 0).length;
+  const ready = roles.filter((role) => role.status === "draft" && role.coveredCompetencies === role.competencyCount && role.competencyCount > 0).length;
 
   return (
     <>
