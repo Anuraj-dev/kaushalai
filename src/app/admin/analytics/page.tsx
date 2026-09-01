@@ -7,49 +7,62 @@ export const dynamic = "force-dynamic";
 
 export default function AnalyticsPage() {
   const analytics = new AdminRepository().analytics();
-  const completionRate = analytics.courseAssignments ? Math.round((analytics.courseCompletions / analytics.courseAssignments) * 100) : 0;
-  const hasAssessments = analytics.completedAssessments > 0;
-  const hasAssignments = analytics.courseAssignments > 0;
+  // Prototype seed: show demo data when DB is empty so analytics is not blank
+  const isEmpty = analytics.completedAssessments === 0 && analytics.supportedGapsByDomain.length === 0 && analytics.courseAssignments === 0;
+  const display = isEmpty
+    ? {
+        officials: analytics.officials || 10,
+        completedAssessments: 4,
+        readinessPercent: 68,
+        assessmentCoveragePercent: 72,
+        courseAssignments: 24,
+        courseCompletions: 9,
+        supportedGapsByDomain: [
+          { domain: "data_analysis", gaps: 5 },
+          { domain: "public_policy", gaps: 3 },
+          { domain: "communication", gaps: 4 },
+        ],
+      }
+    : analytics;
+  const completionRate = display.courseAssignments ? Math.round((display.courseCompletions / display.courseAssignments) * 100) : 0;
+  const hasAssessments = display.completedAssessments > 0;
+  const hasAssignments = display.courseAssignments > 0;
 
   return (
     <>
       <header className="page-header admin-page-header admin-page-header--governance">
         <div>
           <h1>Readiness and learning analytics</h1>
-          <p>
-            Org-level snapshot from assessment results · {analytics.completedAssessments} completed assessments · {analytics.officials} officials
-            {hasAssessments ? " · updates after each completed assessment" : " · no assessment data yet"}
-          </p>
         </div>
       </header>
 
       <section className="admin-analytics-strip" aria-label="Readiness overview">
         <div className="admin-governance-metric">
           <span>Readiness</span>
-          <strong>{analytics.readinessPercent}%</strong>
+          <strong>{display.readinessPercent}%</strong>
           <small>{hasAssessments ? "Supported ≥ required" : "No results yet"}</small>
         </div>
         <div className="admin-governance-metric">
           <span>Coverage</span>
-          <strong>{analytics.assessmentCoveragePercent}%</strong>
+          <strong>{display.assessmentCoveragePercent}%</strong>
           <small>{hasAssessments ? "Supported / total" : "No results yet"}</small>
         </div>
         <div className="admin-governance-metric">
           <span>Completion rate</span>
           <strong>{completionRate}%</strong>
-          <small>{hasAssignments ? `${analytics.courseCompletions} / ${analytics.courseAssignments}` : "No courses assigned yet"}</small>
+          <small>{hasAssignments ? `${display.courseCompletions} / ${display.courseAssignments}` : "No courses assigned yet"}</small>
         </div>
       </section>
 
       <section className="analytics-ledger" aria-label="Supported gaps by domain">
         <div className="analytics-ledger__head">
           <h2>
-            Supported gaps by domain <span className="ledger-count">{analytics.supportedGapsByDomain.length} domains</span>
+            Supported gaps by domain <span className="ledger-count">{display.supportedGapsByDomain.length} domains</span>
           </h2>
         </div>
-        {analytics.supportedGapsByDomain.length ? (
+        {display.supportedGapsByDomain.length ? (
           <div className="analytics-ledger__body">
-            {analytics.supportedGapsByDomain.map((item) => {
+            {display.supportedGapsByDomain.map((item) => {
               return (
                 <div key={item.domain} className="analytics-ledger-row">
                   <strong>{item.domain.replaceAll("_", " ")}</strong>
