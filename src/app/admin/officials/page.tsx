@@ -21,18 +21,7 @@ export default async function OfficialsPage() {
     <>
       <header className="page-header admin-page-header admin-page-header--personnel">
         <div>
-          <div className="header-meta">
-            <span className="tag tag-lime">Personnel</span>
-            <span className="tag">{total} officials</span>
-          </div>
           <h1>Officials</h1>
-          <p>{total} persisted official profiles and their current learning status.</p>
-        </div>
-        <div className="admin-header-actions">
-          <span className="tag tag-dark">Organization roster</span>
-          <small className="muted" style={{ fontFamily: "var(--font-mono)", fontSize: 10 }}>
-            Assessment + reassessment + courses
-          </small>
         </div>
       </header>
 
