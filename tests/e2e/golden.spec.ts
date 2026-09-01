@@ -76,8 +76,8 @@ test("primary official completes the adaptive path at desktop", async ({ page })
   await expect(page.getByText(/Assessment result/)).toBeVisible();
   await expect(page.getByText(/matrix v/i)).toHaveCount(0);
   await expect(page.locator(".recommendation-card").getByText("Learning plan", { exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Mark complete" }).first()).toBeVisible();
-  await page.getByRole("button", { name: "Mark complete" }).first().click();
+  await expect(page.locator(".recommendation-card").getByRole("button", { name: "Mark complete" }).first()).toBeVisible();
+  await page.locator(".recommendation-card").getByRole("button", { name: "Mark complete" }).first().click();
   await expect(page.getByRole("button", { name: "Start reassessment" })).toBeVisible();
   await page.getByRole("button", { name: "Start reassessment" }).click();
   await expect(page.getByText("Round 1", { exact: true })).toBeVisible();

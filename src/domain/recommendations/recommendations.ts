@@ -6,7 +6,7 @@ const includesTag = (text: string, tag: string) => ` ${normalize(text)} `.includ
 // A4-05: Synonym fallback to prevent false-negatives (e.g., Government Cloud catalog phrasing varies).
 // If tag is "government cloud", also match "government technology" or "cloud computing" in title/detail.
 // Extends to survey design / industrial statistics via broader phrase matching. Documented fallback and
-// kept alongside existing apis plural handling. Also checks searchTerms with low score (+2) if no title/detail match.
+// kept alongside existing apis plural handling. Search terms only rank already-eligible courses (+2).
 const SYNONYMS: Record<string, string[]> = {
   "government cloud": ["government technology", "cloud computing"],
   "survey design": ["survey"],
@@ -54,7 +54,7 @@ function evidenceScore(course: CatalogCourse, tags: string[]): number {
     const syns = SYNONYMS[n];
     return syns ? syns.some((syn) => includesTag(detailText, syn)) : false;
   });
-  // Fallback to searchTerms with low score (+2) if no title/detail match but search_terms contains phrase/synonym
+  // Search terms may only rank an already eligible (title/detail) record; membership alone scores 0.
   const searchTermsText = course.searchTerms.join(" ");
   const searchMatch = tags.some((tag) => {
     const n = normalize(tag);
@@ -63,8 +63,7 @@ function evidenceScore(course: CatalogCourse, tags: string[]): number {
     const syns = SYNONYMS[n];
     return syns ? syns.some((syn) => includesTag(searchTermsText, syn)) : false;
   });
-  if (!titleMatch && !detailMatch && !searchMatch) return 0;
-  if (!titleMatch && !detailMatch && searchMatch) return 2;
+  if (!titleMatch && !detailMatch) return 0;
   return (detailMatch ? 100 : 0) + (titleMatch ? 20 : 0) + (searchMatch ? 2 : 0) + (course.detailAvailable ? 5 : 0);
 }
 

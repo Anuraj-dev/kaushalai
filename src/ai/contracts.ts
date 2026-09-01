@@ -81,6 +81,84 @@ export type LearnerQuestion = {
   options: Array<{ id: string; text: string }>;
 };
 
+export const CATALOG_GUIDE_EMPTY_PATH_COPY = "No verified course is available for the current gaps.";
+export const CATALOG_GUIDE_OUTSIDE_PATH_COPY = "This guide only explains courses already on your learning path.";
+export const CATALOG_GUIDE_IDENTITY_COPY = [
+  "I'm Kaushal, the learning-path guide for this assessment.",
+  "I explain courses already on your learning plan. Those courses come from skill gaps against the competency matrix for your job role.",
+  "I can say why a course is first, which skill gap it addresses, and what catalog evidence sits on your plan.",
+  "I cannot search the full iGOT catalog, change scores, or mark a course complete.",
+].join("\n\n");
+
+export function isCatalogGuideIdentityQuestion(question: string): boolean {
+  const normalized = question.toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
+  if (!normalized) return false;
+  return [
+    /who are you/,
+    /\bwho are u\b/,
+    /\bwho r u\b/,
+    /what are you/,
+    /what can you do/,
+    /what can u do/,
+    /what do you do/,
+    /how can you help/,
+    /how do you help/,
+    /tell me about yourself/,
+    /\bwho is this\b/,
+    /\bwhat is this\b/,
+  ].some((pattern) => pattern.test(normalized));
+}
+
+export const catalogGuideCourseNoteSchema = z.object({
+  courseId: z.string().trim().min(1),
+  note: z.string().trim().min(1),
+}).strict();
+
+export const catalogGuideSchema = z.object({
+  schemaVersion: z.literal(AI_SCHEMA_VERSION),
+  gapSummary: z.string(),
+  courseNotes: z.array(catalogGuideCourseNoteSchema),
+  unavailable: z.string(),
+}).strict();
+
+export type CatalogGuideCourseNote = z.infer<typeof catalogGuideCourseNoteSchema>;
+export type CatalogGuide = z.infer<typeof catalogGuideSchema>;
+
+export type CatalogGuidePathCourse = {
+  courseId: string;
+  title: string;
+  provider: string;
+  duration: string;
+  level: string;
+  sourceUrl: string;
+  evidence: "title" | "detailed";
+  competencyId: string;
+  competencyName: string;
+  rank: number;
+  rationale: string;
+  description?: string;
+  learningOutcomes?: string[];
+  tags?: string[];
+  highlighted?: boolean;
+};
+
+export type CatalogGuideAiRequest = {
+  assessmentSessionId: string;
+  matrixVersionId: string;
+  question: string;
+  results: Array<{
+    competencyId: string;
+    competencyName: string;
+    assessedLevel: number;
+    requiredLevel: number;
+    gap: number;
+    priority: number;
+    confidence: number;
+    supported: boolean;
+  }>;
+  pathCourses: CatalogGuidePathCourse[];
+};
+
 export const QUESTION_JSON_SCHEMA = {
   type: "object", additionalProperties: false,
   properties: {
@@ -120,6 +198,24 @@ export const EVALUATION_JSON_SCHEMA = {
     } },
   },
   required: ["schemaVersion", "evaluations"],
+} as const;
+
+export const CATALOG_GUIDE_JSON_SCHEMA = {
+  type: "object", additionalProperties: false,
+  properties: {
+    schemaVersion: { type: "string", enum: [AI_SCHEMA_VERSION] },
+    gapSummary: { type: "string" },
+    courseNotes: { type: "array", items: {
+      type: "object", additionalProperties: false,
+      properties: {
+        courseId: { type: "string", minLength: 1 },
+        note: { type: "string", minLength: 1 },
+      },
+      required: ["courseId", "note"],
+    } },
+    unavailable: { type: "string" },
+  },
+  required: ["schemaVersion", "gapSummary", "courseNotes", "unavailable"],
 } as const;
 
 export class AiContractError extends Error {
@@ -178,6 +274,19 @@ export function validateWrittenEvaluations(value: unknown, request: EvaluateWrit
       const required = Math.min(rubricReasonWords.size, Math.max(1, Math.ceil(rubricReasonWords.size * 0.4)));
       if (overlap < required) throw new AiContractError("semantic_error", "Evaluation reason is not grounded in the answer or rubric");
     }
+  }
+  return parsed.data;
+}
+
+export function validateCatalogGuideOutput(value: unknown, allowedCourseIds: string[]): CatalogGuide {
+  const parsed = catalogGuideSchema.safeParse(value);
+  if (!parsed.success) throw new AiContractError("schema_error", "Catalog guide response does not match schema");
+  const allowed = new Set(allowedCourseIds);
+  const seen = new Set<string>();
+  for (const note of parsed.data.courseNotes) {
+    if (!allowed.has(note.courseId)) throw new AiContractError("semantic_error", "Catalog guide references a course outside the learning path");
+    if (seen.has(note.courseId)) throw new AiContractError("semantic_error", "Catalog guide course ID is duplicated");
+    seen.add(note.courseId);
   }
   return parsed.data;
 }

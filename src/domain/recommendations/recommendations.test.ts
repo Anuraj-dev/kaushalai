@@ -14,6 +14,10 @@ describe("course eligibility", () => {
     expect(isEligibleCourse(course({ title: "Environmental soil collection", detailAvailable: false, searchTerms: ["sampling"], tags: [], description: "", learningOutcomes: [] }), ["sampling"])).toBe(false);
   });
 
+  it("rejects search-term-only membership when title does not match", () => {
+    expect(isEligibleCourse(course({ title: "Introduction to Cooking", detailAvailable: false, searchTerms: ["statistics"], tags: [], description: "", learningOutcomes: [] }), ["statistics"])).toBe(false);
+  });
+
   it("rejects known specialist false positives", () => {
     expect(isEligibleCourse(course({ title: "Fundamentals of Company Accounts", searchTerms: ["national accounts"], tags: [], description: "Financial statements and company accounts", learningOutcomes: [] }), ["national accounts"])).toBe(false);
   });
@@ -36,6 +40,22 @@ describe("buildLearningPath", () => {
     expect(path.items.map((item) => item.courseId)).toEqual(["stats-detail", "stats-third", "python-detail"]);
     expect(path.items).toHaveLength(3);
     expect(path.items.every((item) => item.rationale.includes(item.competencyName))).toBe(true);
+  });
+
+  it("excludes search-term-only courses from the path when a title-matched course exists", () => {
+    const cookingOnly = course({
+      id: "cooking-search",
+      title: "Introduction to Cooking",
+      detailAvailable: false,
+      searchTerms: ["statistics"],
+      tags: [],
+      description: "",
+      learningOutcomes: [],
+    });
+    const statsTitle = course({ id: "stats-title", title: "Statistics at Work", detailAvailable: false, tags: [], description: "", learningOutcomes: [] });
+    const path = buildLearningPath([gaps[0]!], [cookingOnly, statsTitle]);
+    expect(path.items.map((item) => item.courseId)).toEqual(["stats-title"]);
+    expect(path.items.some((item) => item.courseId === "cooking-search")).toBe(false);
   });
 
   it("returns an explicit unavailable result when evidence is weak", () => {
