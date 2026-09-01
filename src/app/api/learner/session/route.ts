@@ -8,14 +8,16 @@ import { repositories } from "@/data";
 import { getDatabase, type KaushalDatabase } from "@/db/client";
 import { persistAssessmentSnapshot, restoreAssessmentFromSnapshot } from "@/db/assessment-snapshot-store";
 import { EVIDENCE_RELIABILITY, scoreAssessment, type AssessmentResult, type CompetencyRequirement, type Evidence } from "@/domain/assessment";
-import { ROUND_2_MAX, round2QuestionCount, round3QuestionCount } from "@/domain/assessment/round-limits";
+import { ROUND_2_MAX, round1QuestionCount, round2QuestionCount, round3QuestionCount } from "@/domain/assessment/round-limits";
 import {
+  baselineQuestions,
   fallbackQuestions,
   parseRoundPayload,
   prefillCompletedAssessment,
   publicQuestions,
   requirements,
   rubrics,
+  shouldPrefillOfficial,
   toStored,
   type RoundPayload,
 } from "@/services/assessment-prefill";
@@ -257,8 +259,8 @@ export async function GET(request: Request) {
   if (!assessmentId && query.get("officialId")) assessmentId = (await repositories(db).assessments.latestForOfficial(query.get("officialId")!))?.id ?? null;
   if (!assessmentId) return fail("No assessment found", 404);
   await restoreAssessmentFromSnapshot(db, assessmentId);
-  const current = db.prepare("SELECT status FROM assessments WHERE id=?").get(assessmentId) as { status: string } | undefined;
-  if (current?.status === "active") {
+  const current = db.prepare("SELECT status, official_id FROM assessments WHERE id=?").get(assessmentId) as { status: string; official_id: string } | undefined;
+  if (current?.status === "active" && shouldPrefillOfficial(db, String(current.official_id))) {
     prefillCompletedAssessment(db, assessmentId);
     await persistAssessmentSnapshot(db, assessmentId);
   }
@@ -289,7 +291,13 @@ export async function POST(request: Request) {
         db.prepare("UPDATE reassessment_invitations SET accepted_at=CURRENT_TIMESTAMP WHERE official_id=? AND accepted_at IS NULL").run(body.officialId);
       }
       const started = await repositories(db).assessments.start(body.officialId);
-      prefillCompletedAssessment(db, started.id);
+      if (shouldPrefillOfficial(db, body.officialId)) {
+        prefillCompletedAssessment(db, started.id);
+      } else {
+        const matrix = requirements(db, started.matrixVersionId);
+        const payload: RoundPayload = { kind: "baseline", questions: baselineQuestions(db, matrix).slice(0, round1QuestionCount(matrix.length)) };
+        db.prepare("INSERT INTO assessment_rounds(id,assessment_id,round_number,kind,status) VALUES (?,?,1,?,'pending')").run(randomUUID(), started.id, JSON.stringify(payload));
+      }
       await persistAssessmentSnapshot(db, started.id);
       return Response.json(session(db, started.id), { status: 201 });
     }

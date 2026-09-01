@@ -6,7 +6,7 @@ import { seedFoundation } from "@/data/seeds";
 import { openDatabase, type KaushalDatabase } from "@/db/client";
 import { migrate } from "@/db/migrate";
 import { round1QuestionCount, round2QuestionCount, round3QuestionCount } from "@/domain/assessment/round-limits";
-import { parseRoundPayload, prefillCompletedAssessment } from "@/services/assessment-prefill";
+import { parseRoundPayload, prefillCompletedAssessment, shouldPrefillOfficial } from "@/services/assessment-prefill";
 import { LearningService } from "@/services/learning-service";
 
 describe("prefilled completed assessments", () => {
@@ -19,8 +19,14 @@ describe("prefilled completed assessments", () => {
   });
   afterEach(() => database.close());
 
+  it("only MOSPI-0003 is eligible for prefill", () => {
+    expect(shouldPrefillOfficial(database, "official-01")).toBe(false);
+    expect(shouldPrefillOfficial(database, "official-02")).toBe(false);
+    expect(shouldPrefillOfficial(database, "official-03")).toBe(true);
+  });
+
   it("persists halved rounds 1-3 with answers and a learning path", async () => {
-    const started = await repositories(database).assessments.start("official-01");
+    const started = await repositories(database).assessments.start("official-03");
     prefillCompletedAssessment(database, started.id);
 
     const assessment = database.prepare("SELECT status FROM assessments WHERE id=?").get(started.id) as { status: string };
@@ -30,11 +36,12 @@ describe("prefilled completed assessments", () => {
     expect(rounds).toHaveLength(3);
     expect(rounds.map((row) => row.status)).toEqual(["completed", "completed", "completed"]);
 
+    const matrixSize = Number((database.prepare("SELECT COUNT(*) count FROM matrix_competencies WHERE matrix_version_id=?").get(started.matrixVersionId) as { count: number }).count);
     const counts = rounds.map((row) => parseRoundPayload(row.kind).questions.length);
-    expect(counts[0]).toBe(round1QuestionCount(8));
-    expect(counts[1]).toBe(round2QuestionCount(8));
+    expect(counts[0]).toBe(round1QuestionCount(matrixSize));
+    expect(counts[1]).toBe(round2QuestionCount(matrixSize));
     expect(counts[2]).toBeGreaterThan(0);
-    expect(counts[2]).toBeLessThanOrEqual(round3QuestionCount(8));
+    expect(counts[2]).toBeLessThanOrEqual(round3QuestionCount(matrixSize));
 
     const responses = Number((database.prepare("SELECT COUNT(*) count FROM responses r JOIN assessment_rounds ar ON ar.id=r.round_id WHERE ar.assessment_id=?").get(started.id) as { count: number }).count);
     expect(responses).toBe(counts.reduce((sum, count) => sum + count, 0));
@@ -44,7 +51,7 @@ describe("prefilled completed assessments", () => {
   });
 
   it("does not rewrite an already completed assessment", async () => {
-    const started = await repositories(database).assessments.start("official-01");
+    const started = await repositories(database).assessments.start("official-03");
     prefillCompletedAssessment(database, started.id);
     const first = database.prepare("SELECT id FROM assessment_rounds WHERE assessment_id=? AND round_number=1").get(started.id) as { id: string };
     prefillCompletedAssessment(database, started.id);

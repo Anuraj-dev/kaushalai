@@ -27,7 +27,13 @@ export type StoredQuestion = {
 export type RoundPayload = { kind: "baseline" | "personalized" | "clarification"; questions: StoredQuestion[] };
 export type PublicQuestion = Omit<StoredQuestion, "rubric" | "options"> & { options: Array<{ id: string; text: string }> };
 
+export const PREFILL_EMPLOYEE_CODE = "MOSPI-0003";
 export const PREFILL_WRITTEN_ANSWER = "I would follow an established procedure and ask for review where needed.";
+
+export function shouldPrefillOfficial(db: KaushalDatabase, officialId: string): boolean {
+  const row = db.prepare("SELECT employee_code FROM officials WHERE id=?").get(officialId) as { employee_code: string } | undefined;
+  return row?.employee_code === PREFILL_EMPLOYEE_CODE;
+}
 
 const parse = <T>(value: unknown, fallback: T): T => {
   try { return value ? JSON.parse(String(value)) as T : fallback; } catch { return fallback; }
