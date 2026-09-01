@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { AdminMatrixDetail } from "@/data/admin-repository";
 import { publishMatrix, saveMatrix } from "@/app/admin/actions";
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,10 @@ export function MatrixForm({ matrix }: { matrix: AdminMatrixDetail }) {
   const selectedMap = useMemo(() => new Map(matrix.competencies.map((item) => [item.id, item])), [matrix.competencies]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set(selectedMap.keys()));
   const editable = matrix.status === "draft";
+
+  useEffect(() => {
+    setSelectedIds(new Set(matrix.competencies.map((item) => item.id)));
+  }, [matrix.versionId, matrix.competencies]);
 
   const grouped = useMemo(() => {
     const map = new Map<string, Array<{ id: string; name: string; domain: string }>>();

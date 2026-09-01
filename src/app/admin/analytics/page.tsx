@@ -7,11 +7,11 @@ export const dynamic = "force-dynamic";
 
 export default function AnalyticsPage() {
   const analytics = new AdminRepository().analytics();
-  // Prototype seed: show demo data when DB is empty so analytics is not blank
-  const isEmpty = analytics.completedAssessments === 0 && analytics.supportedGapsByDomain.length === 0 && analytics.courseAssignments === 0;
+  // Prototype seed: show demo data when DB is empty so analytics is not blank — all-or-nothing, no mixing
+  const isEmpty = analytics.completedAssessments === 0 && analytics.supportedGapsByDomain.length === 0 && analytics.courseAssignments === 0 && analytics.readinessPercent === 0 && analytics.assessmentCoveragePercent === 0;
   const display = isEmpty
     ? {
-        officials: analytics.officials || 10,
+        officials: 10,
         completedAssessments: 4,
         readinessPercent: 68,
         assessmentCoveragePercent: 72,
