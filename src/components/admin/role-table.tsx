@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import { ArrowRight } from "lucide-react";
 import type { AdminRoleSummary } from "@/data/admin-repository";
 
 type StatusFilter = "all" | "draft" | "published";
@@ -114,9 +115,17 @@ export function RoleTable({ roles }: { roles: AdminRoleSummary[] }) {
                   <td>
                     <Link
                       href={`/admin/matrices/${role.roleId}`}
-                      className={`kaushal-button kaushal-button--sm ${role.status === "draft" ? "kaushal-button-dark" : "kaushal-button-secondary"}`}
+                      className={`kaushal-button kaushal-button--sm ${role.status === "draft" ? "kaushal-button-dark" : "kaushal-button-secondary view-matrix-btn"}`}
                     >
-                      {role.status === "draft" ? "Review draft →" : "View matrix →"}
+                      {role.status === "draft" ? (
+                        <>
+                          Review draft <ArrowRight size={14} strokeWidth={1.9} aria-hidden="true" />
+                        </>
+                      ) : (
+                        <>
+                          View matrix <ArrowRight size={14} strokeWidth={1.9} aria-hidden="true" />
+                        </>
+                      )}
                     </Link>
                   </td>
                 </tr>
