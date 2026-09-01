@@ -1,7 +1,7 @@
 import { GoogleGenAI, ThinkingLevel, type GenerateContentResponse } from "@google/genai";
 import Groq from "groq-sdk";
 
-import { AiContractError, CATALOG_GUIDE_JSON_SCHEMA, EVALUATION_JSON_SCHEMA, GEMINI_MODEL, GROQ_MODEL, QUESTION_JSON_SCHEMA } from "./contracts";
+import { AiContractError, CATALOG_GUIDE_JSON_SCHEMA, EVALUATION_JSON_SCHEMA, GEMINI_MODEL, GROQ_MODEL, PLATFORM_CHAT_JSON_SCHEMA, QUESTION_JSON_SCHEMA } from "./contracts";
 import type { AiOperation, AiProviderAdapter, ProviderRequest } from "./service";
 
 type GeminiClient = {
@@ -27,6 +27,7 @@ const OPERATION_METADATA = {
   generate_adaptive_questions: { schema: QUESTION_JSON_SCHEMA, providerSchemaName: "adaptive_questions", outputCap: 2_500 },
   evaluate_written_answers: { schema: EVALUATION_JSON_SCHEMA, providerSchemaName: "written_evaluations", outputCap: 1_200 },
   explain_catalog_guide: { schema: CATALOG_GUIDE_JSON_SCHEMA, providerSchemaName: "catalog_guide", outputCap: 1_500 },
+  platform_chat: { schema: PLATFORM_CHAT_JSON_SCHEMA, providerSchemaName: "platform_chat", outputCap: 1_500 },
 } as const satisfies Record<AiOperation, { schema: object; providerSchemaName: string; outputCap: number }>;
 
 function metadataFor(request: ProviderRequest) {

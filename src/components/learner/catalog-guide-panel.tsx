@@ -3,11 +3,10 @@
 import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import { Plus } from "lucide-react";
-import { CATALOG_GUIDE_IDENTITY_COPY } from "@/ai/contracts";
 import { Button } from "@/components/ui/button";
 
 const GREETING = "How can I help you?";
-const DEFAULT_CHIPS = ["Why is this first?", "Which gap does this address?"];
+const DEFAULT_CHIPS = ["How does the assessment work?", "Explain my gaps", "What can Kaushal help with?"];
 
 function guideStorageKey(assessmentId: string) {
   return `kaushal-guide-${assessmentId}`;
@@ -25,6 +24,7 @@ type CitedCourse = {
 };
 
 type GuideResponse = {
+  answer: string;
   gapSummary: string;
   unavailable: string;
   citedCourses: CitedCourse[];
@@ -35,6 +35,62 @@ type Exchange = {
   answer?: GuideResponse;
   error?: string;
 };
+
+function record(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null ? value as Record<string, unknown> : null;
+}
+
+function stringValue(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}
+
+function normalizeCitedCourse(value: unknown): CitedCourse | null {
+  const item = record(value);
+  if (!item) return null;
+  const courseId = stringValue(item.courseId).trim();
+  const note = stringValue(item.note).trim();
+  if (!courseId || !note) return null;
+  return {
+    courseId,
+    title: stringValue(item.title),
+    provider: stringValue(item.provider),
+    duration: stringValue(item.duration),
+    competencyName: stringValue(item.competencyName),
+    sourceUrl: stringValue(item.sourceUrl),
+    evidence: item.evidence === "detailed" ? "detailed" : "title",
+    note,
+  };
+}
+
+function normalizeGuideResponse(value: unknown): GuideResponse | undefined {
+  const item = record(value);
+  if (!item) return undefined;
+  const gapSummary = stringValue(item.gapSummary);
+  return {
+    // Older exchanges did not persist `answer`; their gap summary is the answer.
+    answer: stringValue(item.answer) || gapSummary,
+    gapSummary,
+    unavailable: stringValue(item.unavailable),
+    citedCourses: Array.isArray(item.citedCourses)
+      ? item.citedCourses.map(normalizeCitedCourse).filter((course): course is CitedCourse => course !== null)
+      : [],
+  };
+}
+
+export function normalizeGuideExchanges(value: unknown): Exchange[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item): Exchange[] => {
+    const exchange = record(item);
+    const question = stringValue(exchange?.question).trim();
+    if (!question) return [];
+    const normalized: Exchange = { question };
+    const answer = normalizeGuideResponse(exchange?.answer);
+    if (answer) normalized.answer = answer;
+    const error = stringValue(exchange?.error).trim();
+    if (error) normalized.error = error;
+    return [normalized];
+  });
+}
 
 function prefersReducedMotion() {
   return typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -66,11 +122,10 @@ function AnswerBody({ answer }: { answer: GuideResponse }) {
   const cited = answer.citedCourses;
   const unavailable = answer.unavailable.trim();
   const summary = answer.gapSummary.trim();
-  if (summary === CATALOG_GUIDE_IDENTITY_COPY) {
-    return <div className="catalog-guide-copy">{summary.split("\n\n").map((paragraph) => <p key={paragraph}>{paragraph}</p>)}</div>;
-  }
+  const main = answer.answer.trim();
   return <>
-    {summary && cited.length === 0 && !unavailable ? <p className="catalog-guide-summary">{summary}</p> : null}
+    {main ? <div className="catalog-guide-copy"><p>{main}</p></div> : null}
+    {summary && !main && cited.length === 0 && !unavailable ? <p className="catalog-guide-summary">{summary}</p> : null}
     {unavailable ? <p className="catalog-guide-unavailable">{unavailable}</p> : null}
     {cited.length > 0 ? <div className="catalog-guide-cards">{cited.map((course) => <article className="catalog-guide-card" key={course.courseId}>
       <strong>{course.title}</strong>
@@ -78,12 +133,11 @@ function AnswerBody({ answer }: { answer: GuideResponse }) {
       <p>{course.note}</p>
       {course.sourceUrl ? <a href={course.sourceUrl} rel="noreferrer" target="_blank">Open course</a> : null}
     </article>)}</div> : null}
-    {!summary && !unavailable && cited.length === 0 ? <p className="catalog-guide-empty">No explanation is available for that question.</p> : null}
+    {!main && !summary && !unavailable && cited.length === 0 ? <p className="catalog-guide-empty">No explanation is available for that question.</p> : null}
   </>;
 }
 
-export function CatalogGuidePanel({ assessmentId, recommendedCourseIds, chips = DEFAULT_CHIPS }: { assessmentId: string; recommendedCourseIds: string[]; chips?: string[] }) {
-  const allowed = new Set(recommendedCourseIds);
+export function CatalogGuidePanel({ assessmentId }: { assessmentId: string }) {
   const titleId = useId();
   const inputId = useId();
   const launcherRef = useRef<HTMLButtonElement>(null);
@@ -103,8 +157,8 @@ export function CatalogGuidePanel({ assessmentId, recommendedCourseIds, chips = 
     try {
       const raw = window.localStorage.getItem(guideStorageKey(assessmentId));
       if (raw) {
-        const parsed = JSON.parse(raw) as Exchange[];
-        if (Array.isArray(parsed)) setExchanges(parsed);
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- hydrate persisted chat history from browser storage
+        setExchanges(normalizeGuideExchanges(JSON.parse(raw)));
       } else {
         setExchanges([]);
       }
@@ -214,8 +268,9 @@ export function CatalogGuidePanel({ assessmentId, recommendedCourseIds, chips = 
       const response = await fetch("/api/learner/guide", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ assessmentId, question: trimmed }) });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error ?? "Unable to explain catalog guide");
-      const citedCourses = (body.citedCourses as CitedCourse[] ?? []).filter((course) => allowed.has(course.courseId));
-      const answer = { gapSummary: String(body.gapSummary ?? ""), unavailable: String(body.unavailable ?? ""), citedCourses };
+      // Server already validates citations against RAG+path context. Show all returned citations.
+      const citedCourses = (body.citedCourses as CitedCourse[] ?? []);
+      const answer = { answer: String(body.answer ?? body.gapSummary ?? ""), gapSummary: String(body.gapSummary ?? ""), unavailable: String(body.unavailable ?? ""), citedCourses };
       setExchanges((current) => current.map((item, index) => index === current.length - 1 ? { ...item, answer } : item));
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : "Unable to explain catalog guide";
@@ -247,12 +302,12 @@ export function CatalogGuidePanel({ assessmentId, recommendedCourseIds, chips = 
           {item.error ? <div className="alert catalog-guide-error" role="alert">{item.error}</div> : null}
           {item.answer ? <div className="catalog-guide-msg catalog-guide-msg-assistant"><AnswerBody answer={item.answer} /></div> : null}
         </div>)}
-        {loading ? <p className="catalog-guide-status">Looking up the recommended courses…</p> : null}
+        {loading ? <p className="catalog-guide-status">Thinking with RAG context…</p> : null}
       </div>
-      {exchanges.length === 0 ? <div className="catalog-guide-chips">{chips.map((chip) => <button className="catalog-guide-chip" type="button" key={chip} disabled={loading} onClick={() => void ask(chip)}>{chip}</button>)}</div> : null}
+      {exchanges.length === 0 ? <div className="catalog-guide-chips">{DEFAULT_CHIPS.map((chip) => <button className="catalog-guide-chip" type="button" key={chip} disabled={loading} onClick={() => void ask(chip)}>{chip}</button>)}</div> : null}
       <form className="catalog-guide-form" action="#" method="post" onSubmit={(event) => { event.preventDefault(); event.stopPropagation(); void ask(question); }}>
         <label htmlFor={inputId}>Question</label>
-        <input id={inputId} ref={inputRef} value={question} onChange={(event) => setQuestion(event.target.value)} placeholder="Ask about a course on your path" autoComplete="off" disabled={loading} />
+        <input id={inputId} ref={inputRef} value={question} onChange={(event) => setQuestion(event.target.value)} placeholder="Ask anything about Kaushal, your assessment, or courses" autoComplete="off" disabled={loading} />
         <Button variant="primary" type="submit" disabled={loading || !question.trim()}>{loading ? "Asking…" : <>Ask <span aria-hidden="true">→</span></>}</Button>
       </form>
     </section> : null}

@@ -163,8 +163,6 @@ export function LearnerPlanLayout({
       </div>
       <CatalogGuidePanel
         assessmentId={session.assessment.id}
-        recommendedCourseIds={session.recommendations.map((item) => item.courseId)}
-        chips={["Why is this first?", "Which gap does this address?", ...session.recommendations.slice(0, 1).map((item) => `Why was ${item.title} recommended?`)]}
       />
     </>
   );

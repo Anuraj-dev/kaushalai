@@ -2,9 +2,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   AI_SCHEMA_VERSION,
-  CATALOG_GUIDE_EMPTY_PATH_COPY,
-  CATALOG_GUIDE_IDENTITY_COPY,
-  CATALOG_GUIDE_OUTSIDE_PATH_COPY,
   createAiAssessmentService,
   createGeminiAdapter,
   createGroqAdapter,
@@ -168,33 +165,32 @@ describe("catalog guide service", () => {
       sleep: async () => undefined,
       jitterMs: () => 0,
     });
-    const response = await new CatalogGuideService(database, (request) => ai.explainCatalogGuide(request)).ask("a1", "Why is this first?");
+    const response = await new CatalogGuideService(database, (request: CatalogGuideAiRequest) => ai.explainCatalogGuide(request)).ask("a1", "Why is this first?");
     expect(response.unavailable).toBe("");
     expect(response.citedCourses.length).toBeGreaterThan(0);
     expect(response.citedCourses[0]?.courseId).toBe(path.course_id);
     expect(response.citedCourses[0]?.title).toBe(path.title);
   });
 
-  it("answers identity questions without calling providers", async () => {
+  it("sends identity questions through the generalized handler", async () => {
     insertFinished(database);
     new LearningService(database).createPath("a1");
     const explain = vi.fn(async () => explainResult({ schemaVersion: AI_SCHEMA_VERSION, gapSummary: "should not run", courseNotes: [], unavailable: "" }));
     const response = await new CatalogGuideService(database, explain).ask("a1", "Who are you?");
-    expect(explain).not.toHaveBeenCalled();
-    expect(response.gapSummary).toBe(CATALOG_GUIDE_IDENTITY_COPY);
+    expect(explain).toHaveBeenCalled();
+    expect(response.gapSummary).toBe("should not run");
     expect(response.citedCourses).toEqual([]);
     expect(response.unavailable).toBe("");
   });
 
-  it("does not call explain on an empty path and uses the empty-path copy", async () => {
+  it("sends empty-path questions through the generalized handler", async () => {
     insertFinished(database);
     const explain = vi.fn(async () => explainResult({ schemaVersion: AI_SCHEMA_VERSION, gapSummary: "should not run", courseNotes: [], unavailable: "" }));
     const response = await new CatalogGuideService(database, explain).ask("a1", "Why is this first?");
-    expect(explain).not.toHaveBeenCalled();
-    expect(response.unavailable).toBe(CATALOG_GUIDE_EMPTY_PATH_COPY);
+    expect(explain).toHaveBeenCalled();
+    expect(response.unavailable).toBe("");
     expect(response.citedCourses).toEqual([]);
-    expect(response.suggestedNext).toEqual(["Why is this first?", "Which gap does this address?"]);
-    expect(response.gapSummary === CATALOG_GUIDE_EMPTY_PATH_COPY || response.gapSummary.includes("Basic Statistics")).toBe(true);
+    expect(response.suggestedNext.slice(0, 3)).toEqual(["How does the assessment work?", "Explain my gaps", "How is the learning plan built?"]);
   });
 
   it("falls back to grounded seeded notes when provider credentials are missing", async () => {
@@ -207,21 +203,23 @@ describe("catalog guide service", () => {
       sleep: async () => undefined,
       jitterMs: () => 0,
     });
-    const response = await new CatalogGuideService(database, (request) => ai.explainCatalogGuide(request))
+    const response = await new CatalogGuideService(database, (request: CatalogGuideAiRequest) => ai.explainCatalogGuide(request))
       .ask("a1", `Why was ${path.title} recommended for statistics?`);
     expect(response.citedCourses.length).toBeGreaterThan(0);
     expect(response.citedCourses.some((course) => course.note.includes(path.title))).toBe(true);
-    expect(response.unavailable).not.toBe(CATALOG_GUIDE_OUTSIDE_PATH_COPY);
+    expect(response.unavailable).toBe("");
   });
 
-  it("rejects active and unknown assessments and does not persist guide output", async () => {
+  it("allows active assessments without persisting guide output", async () => {
     database.prepare("INSERT INTO assessments(id,official_id,matrix_version_id,status) VALUES ('active-1','official-01','matrix-01-v1','active')").run();
     const explain = vi.fn(async () => explainResult({ schemaVersion: AI_SCHEMA_VERSION, gapSummary: "", courseNotes: [], unavailable: "" }));
     const service = new CatalogGuideService(database, explain);
 
     await expect(service.ask("missing", "Why is this first?")).rejects.toMatchObject({ status: 404, message: "Assessment not found" });
-    await expect(service.ask("active-1", "Why is this first?")).rejects.toMatchObject({ status: 400, message: "Assessment is not finished" });
-    expect(explain).not.toHaveBeenCalled();
+    await expect(service.ask("active-1", "Why is this first?")).resolves.toMatchObject({
+      gapSummary: "Your assessment is still in progress. Skill-gap results will be available after scoring.",
+    });
+    expect(explain).toHaveBeenCalled();
 
     insertFinished(database, "provisional");
     new LearningService(database).createPath("a1");

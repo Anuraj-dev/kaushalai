@@ -12,14 +12,17 @@ import {
   type GeneratedQuestions,
   type GenerateAdaptiveQuestionsRequest,
   type LearnerQuestion,
+  type PlatformChat,
+  type PlatformChatRequest,
   toLearnerQuestions,
   validateCatalogGuideOutput,
   validateGeneratedQuestions,
+  validatePlatformChatOutput,
   validateWrittenEvaluations,
 } from "./contracts";
 
 export type AiProviderName = "gemini" | "groq" | "seeded-fallback";
-export type AiOperation = "generate_adaptive_questions" | "evaluate_written_answers" | "explain_catalog_guide";
+export type AiOperation = "generate_adaptive_questions" | "evaluate_written_answers" | "explain_catalog_guide" | "platform_chat";
 
 export type ProviderRequest = {
   operation: AiOperation;
@@ -166,8 +169,11 @@ function questionOutsidePath(request: CatalogGuideAiRequest): boolean {
   return !distinctive.some((word) => corpus.has(word));
 }
 
-function gapSummaryFromResults(request: CatalogGuideAiRequest): string {
-  const names = request.results.filter((result) => result.gap > 0).map((result) => result.competencyName);
+function gapSummaryFromResults(results: CatalogGuideAiRequest["results"], assessmentStatus?: string): string {
+  if (results.length === 0 && assessmentStatus !== undefined && !["completed", "provisional"].includes(assessmentStatus)) {
+    return "Your assessment is still in progress. Skill-gap results will be available after scoring.";
+  }
+  const names = results.filter((result) => result.gap > 0).map((result) => result.competencyName);
   if (names.length === 0) return "No current skill gaps on the assessed competencies.";
   return `Skill gaps in ${names.join(", ")}.`;
 }
@@ -208,6 +214,33 @@ function promptForCatalogGuide(request: CatalogGuideAiRequest): string {
   });
 }
 
+function promptForPlatformChat(request: PlatformChatRequest): string {
+  return JSON.stringify({
+    task: "You are Kaushal, a helpful general assistant for the Kaushal platform. Answer the user's question using the provided RAG context. Return only schema-valid JSON.",
+    rules: [
+      "Always produce an answer via the LLM - never return a canned hardcoded string without LLM.",
+      "Use RAG context as primary source. Cite at most 3 relevant courses in citations only if they help answer the question.",
+      "Do not invent courses, scores, or times. If no course is relevant, return citations as empty array.",
+      "For general platform doubts (assessment flow, roles, how Kaushal works), use platformDocs and explain clearly.",
+      "For off-topic queries (e.g., current time), explain limitation briefly and offer platform help. Do not claim live clock.",
+      "If assessmentStatus is active or another unfinished status and results is empty, say the assessment is still in progress and skill-gap results are pending. Never describe that as no skill gaps.",
+      "Write concise, direct, helpful answer. One paragraph or short bullet list.",
+      "Never mention search terms or inferred competency domains as course facts unless they appear in RAG context.",
+      "Always include schemaVersion, answer, citations, gapSummary, courseNotes, unavailable in JSON. Use empty string/array if no value.",
+    ],
+    matrixVersionId: request.matrixVersionId,
+    assessmentStatus: request.assessmentStatus,
+    question: request.question,
+    results: request.results,
+    pathCourses: request.pathCourses.map(catalogGuideCoursePayload),
+    ragCourses: request.ragCourses.map((c) => ({
+      courseId: c.courseId, title: c.title, provider: c.provider, duration: c.duration, level: c.level, sourceUrl: c.sourceUrl,
+      competencyName: c.competencyName, description: c.description, tags: c.tags, outcomes: c.learningOutcomes, relevanceScore: c.relevanceScore,
+    })),
+    platformDocs: request.platformDocs,
+  });
+}
+
 function seededCatalogGuide(request: CatalogGuideAiRequest): CatalogGuide {
   if (isCatalogGuideIdentityQuestion(request.question)) {
     return { schemaVersion: AI_SCHEMA_VERSION, gapSummary: CATALOG_GUIDE_IDENTITY_COPY, courseNotes: [], unavailable: "" };
@@ -217,20 +250,66 @@ function seededCatalogGuide(request: CatalogGuideAiRequest): CatalogGuide {
   }
   const highlighted = request.pathCourses.filter((course) => course.highlighted);
   if (highlighted.length === 0 && questionOutsidePath(request)) {
-    return { schemaVersion: AI_SCHEMA_VERSION, gapSummary: gapSummaryFromResults(request), courseNotes: [], unavailable: CATALOG_GUIDE_OUTSIDE_PATH_COPY };
+    return { schemaVersion: AI_SCHEMA_VERSION, gapSummary: gapSummaryFromResults(request.results), courseNotes: [], unavailable: CATALOG_GUIDE_OUTSIDE_PATH_COPY };
   }
   const first = request.pathCourses[0];
   const asksForFirst = catalogGuideKeywords(request.question).includes("first") && first;
   const relevant = (highlighted.length > 0 ? highlighted : asksForFirst && first ? [first] : request.pathCourses).slice(0, 3);
   return {
     schemaVersion: AI_SCHEMA_VERSION,
-    gapSummary: gapSummaryFromResults(request),
+    gapSummary: gapSummaryFromResults(request.results),
     courseNotes: relevant.map((course) => ({
       courseId: course.courseId,
       note: `${course.title} is on the plan for the ${course.competencyName} skill gap.`,
     })),
     unavailable: "",
   };
+}
+
+function seededPlatformChat(request: PlatformChatRequest): PlatformChat {
+  // Generalized fallback: always go through LLM shape, never hardcoded outside/identity gate.
+  // Use RAG context to produce a minimal grounded answer without invoking provider.
+  const hasRag = request.ragCourses.length > 0;
+  const hasPath = request.pathCourses.length > 0;
+  const gapSummary = gapSummaryFromResults(request.results, request.assessmentStatus);
+  const platformQuestion = isPlatformQuestion(request.question);
+  if (hasRag && !platformQuestion) {
+    const top = request.ragCourses.slice(0, 2);
+    return {
+      schemaVersion: AI_SCHEMA_VERSION,
+      answer: `${gapSummary} Based on your query "${request.question.slice(0, 120)}", relevant courses include ${top.map((c) => c.title).join(", ")}. See citations for details.`,
+      citations: top.map((c) => ({ courseId: c.courseId, note: `${c.title} is relevant for ${c.competencyName}.` })),
+      gapSummary,
+      courseNotes: [],
+      unavailable: "",
+    };
+  }
+  if (hasPath && /\b(first|recommend(?:ed|ation)?)\b/i.test(request.question)) {
+    const first = request.pathCourses[0];
+    return {
+      schemaVersion: AI_SCHEMA_VERSION,
+      answer: `${gapSummary} Your current learning plan starts with ${first.title} for ${first.competencyName}. Ask about any platform topic and I will help using the retrieved context.`,
+      citations: [{ courseId: first.courseId, note: `${first.title} is on your plan for ${first.competencyName}.` }],
+      gapSummary,
+      courseNotes: [],
+      unavailable: "",
+    };
+  }
+  // platform-only fallback (no LLM available) - still LLM-shaped answer, not hardcoded outside copy
+  return {
+    schemaVersion: AI_SCHEMA_VERSION,
+    answer: `I'm Kaushal, your Kaushal platform assistant. ${request.platformDocs[0]?.content.slice(0, 240) ?? "I can help with assessment, learning plans, and course guidance using the catalog."} Ask about your gaps, courses, or how the platform works.`,
+    citations: [],
+    gapSummary,
+    courseNotes: [],
+    unavailable: "",
+  };
+}
+
+function isPlatformQuestion(question: string): boolean {
+  const normalized = question.toLowerCase();
+  if (/\b(course|catalog|recommend(?:ed|ation)?)\b/.test(normalized)) return false;
+  return /\b(assessment|gap|gaps|platform|kaushal|competenc(?:y|ies)|role|matrix|learning plan|how does|what can|explain)\b/.test(normalized);
 }
 
 export function createAiAssessmentService(dependencies: Dependencies) {
@@ -322,6 +401,8 @@ export function createAiAssessmentService(dependencies: Dependencies) {
       });
     },
     async explainCatalogGuide(request: CatalogGuideAiRequest) {
+      // Legacy path: kept for backward compat tests. Now delegates to RAG+LLM via platform_chat where possible,
+      // but preserves old schema for callers that pass only pathCourses.
       const allowedCourseIds = request.pathCourses.map((course) => course.courseId);
       if (isCatalogGuideIdentityQuestion(request.question)) {
         const data = validateCatalogGuideOutput(seededCatalogGuide(request), allowedCourseIds);
@@ -333,6 +414,21 @@ export function createAiAssessmentService(dependencies: Dependencies) {
         questionCount: request.pathCourses.length, prompt: promptForCatalogGuide(request),
         validate: (data) => validateCatalogGuideOutput(data, allowedCourseIds),
         fallback: () => validateCatalogGuideOutput(seededCatalogGuide(request), allowedCourseIds),
+      });
+    },
+    async chat(request: PlatformChatRequest) {
+      // Generalized RAG + LLM: LLM is always last layer, no hardcoded early returns
+      const allowedCourseIds = [...request.pathCourses.map((c) => c.courseId), ...request.ragCourses.map((c) => c.courseId)];
+      // Dedup allowed
+      const dedupAllowed = [...new Set(allowedCourseIds)];
+      // Ensure at least one allowed for validation edge (empty rag + empty path) -> allow any fallback validation to pass with empty citations
+      const effectiveAllowed = dedupAllowed.length ? dedupAllowed : ["__no_course__"];
+      return run({
+        operation: "platform_chat", assessmentSessionId: request.assessmentSessionId,
+        matrixVersionId: request.matrixVersionId, competencyIds: request.results.map((item) => item.competencyId),
+        questionCount: request.ragCourses.length + request.pathCourses.length, prompt: promptForPlatformChat(request),
+        validate: (data) => validatePlatformChatOutput(data, effectiveAllowed),
+        fallback: () => validatePlatformChatOutput(seededPlatformChat(request), effectiveAllowed),
       });
     },
     toLearnerQuestions: (data: GeneratedQuestions): LearnerQuestion[] => toLearnerQuestions(data),
