@@ -13,30 +13,12 @@ export default function AdminPage() {
     : 0;
   const sumOfficials = roles.reduce((sum, role) => sum + role.affectedOfficials, 0);
   const ready = roles.filter((role) => role.coveredCompetencies === role.competencyCount && role.competencyCount > 0).length;
-  const latest = roles.length ? Math.max(...roles.map((role) => role.version)) : 0;
-  const nextVersion = latest + 1;
 
   return (
     <>
       <header className="page-header admin-page-header admin-page-header--governance">
         <div>
-          <div className="header-meta">
-            <span className="tag tag-lime">Governance</span>
-            <span className="tag">
-              {roles.length} roles · v{latest} latest
-            </span>
-          </div>
           <h1>Role matrices</h1>
-          <p>
-            Review question coverage and publish new immutable versions for ten Official Statistics roles. Only complete matrices
-            (rubrics, tags, baseline + fallback) can be published.
-          </p>
-        </div>
-        <div className="admin-header-actions">
-          <span className="tag">Immutability enforced</span>
-          <small className="muted" style={{ fontFamily: "var(--font-mono)", fontSize: 10 }}>
-            Drafts create a new version · publish locks v{nextVersion}
-          </small>
         </div>
       </header>
 

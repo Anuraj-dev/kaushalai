@@ -13,18 +13,7 @@ export default function AnalyticsPage() {
     <>
       <header className="page-header admin-page-header admin-page-header--governance">
         <div>
-          <div className="header-meta">
-            <span className="tag tag-lime">Governance</span>
-            <span className="tag">Organization evidence</span>
-          </div>
           <h1>Readiness and learning analytics</h1>
-          <p>Totals use persisted assessments, supported results, recommendations, and course completions.</p>
-        </div>
-        <div className="admin-header-actions">
-          <span className="tag">Evidence ledger</span>
-          <small className="muted" style={{ fontFamily: "var(--font-mono)", fontSize: 10 }}>
-            {analytics.officials} officials · {analytics.completedAssessments} completed
-          </small>
         </div>
       </header>
 
