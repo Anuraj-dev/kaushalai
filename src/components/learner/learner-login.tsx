@@ -3,24 +3,28 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowRight, Eye, EyeOff, Pencil } from "lucide-react";
+import {
+  PLAN_PATH,
+  ROUNDS_PATH,
+  clearSession,
+  isAssessmentComplete,
+  persistSession,
+  request,
+  officialStorageKey,
+  storageKey,
+  waitForPlanCraft,
+} from "@/components/learner/learner-session";
+import { PlanCraftLoader } from "@/components/learner/plan-craft-loader";
 import { Button } from "@/components/ui/button";
 
 type Official = { id: string; name: string; jobRoleName: string; employeeCode: string };
-
-const storageKey = "kaushal-active-assessment";
-const officialStorageKey = "kaushal-active-official";
-const request = async (url: string, init?: RequestInit) => {
-  const response = await fetch(url, init);
-  const body = await response.json();
-  if (!response.ok) throw new Error(body.error ?? "Something went wrong");
-  return body;
-};
 
 export function LearnerLogin() {
   const router = useRouter();
   const [officials, setOfficials] = useState<Official[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [crafting, setCrafting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showCredentials, setShowCredentials] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -39,17 +43,14 @@ export function LearnerLogin() {
           try {
             const restored = await request(`/api/learner/session?assessmentId=${encodeURIComponent(saved)}`);
             if (mounted && restored?.assessment?.id) {
-              window.localStorage.setItem(officialStorageKey, JSON.stringify({ name: restored.official.name }));
-              window.dispatchEvent(new Event("kaushal-assessment-started"));
-              router.replace("/learner");
+              persistSession(restored);
+              router.replace(isAssessmentComplete(restored) ? PLAN_PATH : ROUNDS_PATH);
               return;
             }
           } catch {
             // Stale assessment id — drop both markers and show sign-in.
           }
-          window.localStorage.removeItem(storageKey);
-          window.localStorage.removeItem(officialStorageKey);
-          window.dispatchEvent(new Event("kaushal-assessment-started"));
+          clearSession();
         } else if (savedOfficial) {
           // Official marker without an assessment id would bounce login ↔ workspace.
           window.localStorage.removeItem(officialStorageKey);
@@ -77,10 +78,14 @@ export function LearnerLogin() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "start", officialId }),
       });
-      window.localStorage.setItem(storageKey, value.assessment.id);
-      window.localStorage.setItem(officialStorageKey, JSON.stringify({ name: value.official.name }));
-      window.dispatchEvent(new Event("kaushal-assessment-started"));
-      router.push("/learner");
+      persistSession(value);
+      if (isAssessmentComplete(value)) {
+        setCrafting(true);
+        await waitForPlanCraft();
+        router.push(PLAN_PATH);
+        return;
+      }
+      router.push(ROUNDS_PATH);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Unable to start assessment");
     } finally {
@@ -101,6 +106,10 @@ export function LearnerLogin() {
     }
     setError(null);
     void start(official.id);
+  }
+
+  if (crafting) {
+    return <PlanCraftLoader />;
   }
 
   if (loading) {

@@ -73,13 +73,18 @@ test("primary official completes the adaptive path at desktop", async ({ page })
     await page.locator("textarea").fill("I documented the method, checked the data, and reviewed the result.");
     await page.getByRole("button", { name: "Finish assessment" }).click();
   }
+  await expect(page.getByText("Crafting your personalized learning plan")).toBeVisible();
+  await expect(page).toHaveURL(/\/learner\/plan/, { timeout: 30_000 });
+  await expect(page.getByRole("list", { name: "Assessment progress" })).toHaveCount(0);
   await expect(page.getByText(/Assessment result/)).toBeVisible();
   await expect(page.getByText(/matrix v/i)).toHaveCount(0);
   await expect(page.locator(".recommendation-card").getByText("Learning plan", { exact: true })).toBeVisible();
   await expect(page.locator(".recommendation-card").getByRole("button", { name: "Mark complete" }).first()).toBeVisible();
   await page.locator(".recommendation-card").getByRole("button", { name: "Mark complete" }).first().click();
+  await page.getByRole("button", { name: "Confirm" }).click();
   await expect(page.getByRole("button", { name: "Start reassessment" })).toBeVisible();
   await page.getByRole("button", { name: "Start reassessment" }).click();
+  await expect(page).toHaveURL(/\/learner$/);
   await expect(page.getByText("Round 1", { exact: true })).toBeVisible();
   await expect(page.getByText("Initial baseline", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Start reassessment" })).toHaveCount(0);
@@ -91,11 +96,12 @@ test("MOSPI-0003 lands on the persisted learning path", async ({ page }) => {
   await page.getByRole("button", { name: "Change credentials" }).click();
   await page.getByRole("button", { name: "MOSPI-0003" }).click();
   await page.getByRole("button", { name: "Sign in" }).click();
-  await expect(page).toHaveURL(/\/learner$/);
+  await expect(page.getByText("Crafting your personalized learning plan")).toBeVisible();
+  await expect(page).toHaveURL(/\/learner\/plan/, { timeout: 20_000 });
   await expect(page.locator(".question-list")).toHaveCount(0);
   await expect(page.getByText("Round 1", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("list", { name: "Assessment progress" })).toHaveCount(0);
   await expect(page.getByText(/Assessment result/)).toBeVisible();
-  await expect(page.getByRole("list", { name: "Assessment progress" }).getByText("Learning plan")).toBeVisible();
   await expect(page.locator(".recommendation-card").getByText("Learning plan", { exact: true })).toBeVisible();
 });
 
