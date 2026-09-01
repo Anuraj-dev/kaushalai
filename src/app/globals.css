@@ -31,7 +31,7 @@
 }
 
 * { box-sizing: border-box; }
-html { background: var(--paper); scroll-behavior: smooth; overflow-x: clip; }
+html { background: var(--paper); scroll-behavior: smooth; overflow-x: visible; }
 body { margin: 0 auto; background: var(--paper); color: var(--ink); font-family: var(--font-sans); font-size: 15px; line-height: 1.5; transform: scale(1.25); transform-origin: top center; width: 80%; min-height: 80vh; }
 ::selection { background: var(--lime); color: var(--ink); }
 a { color: inherit; }
@@ -384,6 +384,51 @@ button:disabled { cursor: not-allowed; }
 .confidence-supported { color: var(--ink); }
 .recommendation-card { margin-top: 16px; border-color: var(--lime); background: var(--lime-wash); }
 .recommendation-card .kaushal-button-secondary { background: var(--paper); }
+#catalog-guide-overlay { position: fixed; inset: 0; z-index: 40; pointer-events: none; }
+#catalog-guide-overlay .catalog-guide-widget { pointer-events: auto; }
+.catalog-guide-widget { position: absolute; right: 24px; bottom: 24px; display: flex; flex-direction: column; align-items: flex-end; gap: 12px; width: auto; }
+.catalog-guide-widget.is-open { width: 380px; }
+.catalog-guide-launcher { display: grid; width: 56px; height: 56px; min-width: 44px; min-height: 44px; place-items: center; padding: 8px; border: 1px solid var(--ink); border-radius: var(--radius-sm); background: var(--lime); box-shadow: var(--shadow-float); }
+.catalog-guide-launcher img { width: 36px; height: 38px; object-fit: contain; }
+.catalog-guide-launcher:hover { background: var(--lime-card); }
+.catalog-guide-panel { display: flex; flex-direction: column; width: 100%; min-width: 0; max-height: min(560px, calc(100vh - 96px)); padding: 16px; overflow: hidden; border: 1px solid var(--ink); border-radius: var(--radius-sm); background: var(--paper); box-shadow: var(--shadow-float); }
+.catalog-guide-header { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; gap: 10px; align-items: center; min-width: 0; }
+.catalog-guide-header img { width: 28px; height: 30px; object-fit: contain; }
+.catalog-guide-kicker { margin: 0; color: var(--muted); font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.02em; }
+.catalog-guide-header h2 { margin: 2px 0 0; font-size: 18px; font-weight: 500; letter-spacing: -0.03em; }
+.catalog-guide-close { min-height: 44px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--paper); color: var(--ink); font-size: 12px; font-weight: 700; }
+.catalog-guide-close:hover { border-color: var(--ink); background: var(--lime-wash); }
+.catalog-guide-thread { display: grid; gap: 8px; min-width: 0; max-width: 100%; flex: 1 1 auto; max-height: 320px; margin-top: 14px; overflow-x: hidden; overflow-y: auto; }
+.catalog-guide-exchange { display: grid; gap: 8px; min-width: 0; }
+.catalog-guide-msg { min-width: 0; max-width: 100%; padding: 10px 12px; border-radius: var(--radius-sm); }
+.catalog-guide-msg p { margin: 0; font-size: 14px; line-height: 1.45; }
+.catalog-guide-copy { display: grid; gap: 8px; }
+.catalog-guide-msg-assistant { border: 1px solid var(--line); background: var(--paper); }
+.catalog-guide-msg-user { justify-self: end; max-width: 85%; background: var(--ink); color: var(--paper); }
+.catalog-guide-caret { display: inline-block; width: 7px; height: 1em; margin-left: 3px; vertical-align: text-bottom; background: var(--ink); animation: catalog-guide-caret 0.9s steps(1) infinite; }
+.catalog-guide-chips { display: flex; flex-wrap: wrap; gap: 8px; min-width: 0; max-width: 100%; margin: 12px 0 0; }
+.catalog-guide-chip { display: inline-flex; min-width: 0; max-width: 100%; min-height: 44px; align-items: center; padding: 10px 12px; border: 1px solid var(--ink); border-radius: var(--radius-sm); background: var(--lime); color: var(--ink); font-size: 13px; font-weight: 700; line-height: 1.3; text-align: left; white-space: normal; }
+.catalog-guide-chip:hover:not(:disabled) { background: var(--lime-card); }
+.catalog-guide-chip:disabled { opacity: 0.45; }
+.catalog-guide-form { display: flex; flex-wrap: wrap; gap: 8px; min-width: 0; max-width: 100%; margin-top: 12px; }
+.catalog-guide-form label { width: 100%; color: var(--muted); font-family: var(--font-mono); font-size: 10px; }
+.catalog-guide-form input { flex: 1 1 160px; width: 100%; min-width: 0; max-width: 100%; min-height: 44px; padding: 10px 12px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--paper); color: var(--ink); font-size: 14px; }
+.catalog-guide-form input:focus { border-color: var(--ink); outline: none; box-shadow: 0 0 0 4px var(--lime); }
+.catalog-guide-form .kaushal-button { min-height: 44px; height: auto; flex: 0 1 auto; max-width: 100%; }
+.catalog-guide-status, .catalog-guide-empty, .catalog-guide-summary, .catalog-guide-unavailable { min-width: 0; max-width: 100%; margin: 0; font-size: 14px; line-height: 1.45; }
+.catalog-guide-unavailable { color: var(--ink); }
+.catalog-guide-error { margin: 0; border-color: var(--danger); background: var(--paper); }
+.catalog-guide-cards { display: grid; gap: 8px; min-width: 0; max-width: 100%; margin-top: 8px; }
+.catalog-guide-card { display: grid; gap: 4px; min-width: 0; max-width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--lime-wash); }
+.catalog-guide-card > * { min-width: 0; max-width: 100%; }
+.catalog-guide-card strong { font-size: 14px; font-weight: 500; }
+.catalog-guide-card-meta { color: var(--muted); font-size: 12px; }
+.catalog-guide-card a { color: var(--ink); font-size: 13px; font-weight: 700; text-underline-offset: 3px; }
+.catalog-guide-card p { margin: 0; font-size: 14px; line-height: 1.4; }
+@keyframes catalog-guide-caret { 50% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .catalog-guide-caret { animation: none; }
+}
 
 .admin-shell { padding-top: 70px; }
 .admin-page-header { align-items: start; }
@@ -508,8 +553,8 @@ button:disabled { cursor: not-allowed; }
   .page-header h1, .admin-shell h1 { font-size: 44px; }
   .page-header > .tag { margin-top: 18px; }
   .learner-header .kaushal-button { width: 100%; margin-top: 22px; }
-  .stepper { display: flex; margin: 22px 0 24px; overflow-x: auto; padding-bottom: 3px; }
-  .step { min-width: 140px; }
+  .stepper { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; min-width: 0; max-width: 100%; margin: 22px 0 24px; }
+  .step { min-width: 0; overflow: hidden; }
   .surface { padding: 20px; }
   .section-intro, .round-heading { display: block; }
   .section-intro p { margin-top: 16px; }

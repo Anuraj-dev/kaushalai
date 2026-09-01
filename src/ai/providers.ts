@@ -1,8 +1,8 @@
 import { GoogleGenAI, ThinkingLevel, type GenerateContentResponse } from "@google/genai";
 import Groq from "groq-sdk";
 
-import { AiContractError, EVALUATION_JSON_SCHEMA, GEMINI_MODEL, GROQ_MODEL, QUESTION_JSON_SCHEMA } from "./contracts";
-import type { AiProviderAdapter, ProviderRequest } from "./service";
+import { AiContractError, CATALOG_GUIDE_JSON_SCHEMA, EVALUATION_JSON_SCHEMA, GEMINI_MODEL, GROQ_MODEL, QUESTION_JSON_SCHEMA } from "./contracts";
+import type { AiOperation, AiProviderAdapter, ProviderRequest } from "./service";
 
 type GeminiClient = {
   models: {
@@ -23,12 +23,14 @@ export type AiProviderEnvironment = {
   AI_PROVIDER_MODE?: string;
 };
 
-function schemaFor(request: ProviderRequest) {
-  return request.operation === "generate_adaptive_questions" ? QUESTION_JSON_SCHEMA : EVALUATION_JSON_SCHEMA;
-}
+const OPERATION_METADATA = {
+  generate_adaptive_questions: { schema: QUESTION_JSON_SCHEMA, providerSchemaName: "adaptive_questions", outputCap: 2_500 },
+  evaluate_written_answers: { schema: EVALUATION_JSON_SCHEMA, providerSchemaName: "written_evaluations", outputCap: 1_200 },
+  explain_catalog_guide: { schema: CATALOG_GUIDE_JSON_SCHEMA, providerSchemaName: "catalog_guide", outputCap: 1_500 },
+} as const satisfies Record<AiOperation, { schema: object; providerSchemaName: string; outputCap: number }>;
 
-function outputLimitFor(request: ProviderRequest) {
-  return request.operation === "generate_adaptive_questions" ? 2_500 : 1_200;
+function metadataFor(request: ProviderRequest) {
+  return OPERATION_METADATA[request.operation];
 }
 
 function missingCredential(provider: string): Error & { status: number; code: string } {
@@ -63,9 +65,9 @@ export function createGeminiAdapter(options: { apiKey?: string; model?: string; 
             abortSignal: controller.signal,
             httpOptions: { timeout: request.timeoutMs, retryOptions: { attempts: 1 } },
             responseMimeType: "application/json",
-            responseJsonSchema: schemaFor(request),
+            responseJsonSchema: metadataFor(request).schema,
             temperature: 0.2,
-            maxOutputTokens: outputLimitFor(request),
+            maxOutputTokens: metadataFor(request).outputCap,
             thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
           },
         });
@@ -102,14 +104,14 @@ export function createGroqAdapter(options: { apiKey?: string; model?: string; cl
             response_format: {
               type: "json_schema",
               json_schema: {
-                name: request.operation === "generate_adaptive_questions" ? "adaptive_questions" : "written_evaluations",
+                name: metadataFor(request).providerSchemaName,
                 strict: true,
-                schema: schemaFor(request),
+                schema: metadataFor(request).schema,
               },
             },
             reasoning_effort: "none",
             temperature: 0.2,
-            max_tokens: outputLimitFor(request),
+            max_tokens: metadataFor(request).outputCap,
             stream: false,
           },
           { signal: controller.signal } as Record<string, unknown>,

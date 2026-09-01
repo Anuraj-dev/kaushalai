@@ -2,17 +2,24 @@ import { randomUUID as nodeRandomUUID } from "node:crypto";
 import {
   AI_SCHEMA_VERSION,
   AiContractError,
+  CATALOG_GUIDE_EMPTY_PATH_COPY,
+  CATALOG_GUIDE_IDENTITY_COPY,
+  isCatalogGuideIdentityQuestion,
+  CATALOG_GUIDE_OUTSIDE_PATH_COPY,
+  type CatalogGuide,
+  type CatalogGuideAiRequest,
   type EvaluateWrittenAnswersRequest,
   type GeneratedQuestions,
   type GenerateAdaptiveQuestionsRequest,
   type LearnerQuestion,
   toLearnerQuestions,
+  validateCatalogGuideOutput,
   validateGeneratedQuestions,
   validateWrittenEvaluations,
 } from "./contracts";
 
 export type AiProviderName = "gemini" | "groq" | "seeded-fallback";
-export type AiOperation = "generate_adaptive_questions" | "evaluate_written_answers";
+export type AiOperation = "generate_adaptive_questions" | "evaluate_written_answers" | "explain_catalog_guide";
 
 export type ProviderRequest = {
   operation: AiOperation;
@@ -140,6 +147,92 @@ function promptForEvaluation(request: EvaluateWrittenAnswersRequest): string {
   });
 }
 
+const PATH_GUIDE_STOPWORDS = new Set([
+  "this", "that", "which", "does", "address", "first", "about", "your", "learning", "path",
+  "course", "courses", "recommended", "recommend", "gap", "gaps", "skill", "skills", "why",
+  "what", "when", "from", "with", "official", "competency", "matrix",
+]);
+
+function catalogGuideKeywords(text: string): string[] {
+  return text.toLowerCase().match(/[a-z0-9]+/g)?.filter((word) => word.length >= 4) ?? [];
+}
+
+function questionOutsidePath(request: CatalogGuideAiRequest): boolean {
+  const distinctive = catalogGuideKeywords(request.question).filter((word) => !PATH_GUIDE_STOPWORDS.has(word));
+  if (distinctive.length === 0) return false;
+  const corpus = new Set(request.pathCourses.flatMap((course) => catalogGuideKeywords(
+    [course.title, course.provider, course.competencyName, course.rationale, course.description ?? "", ...(course.tags ?? []), ...(course.learningOutcomes ?? [])].join(" "),
+  )));
+  return !distinctive.some((word) => corpus.has(word));
+}
+
+function gapSummaryFromResults(request: CatalogGuideAiRequest): string {
+  const names = request.results.filter((result) => result.gap > 0).map((result) => result.competencyName);
+  if (names.length === 0) return "No current skill gaps on the assessed competencies.";
+  return `Skill gaps in ${names.join(", ")}.`;
+}
+
+function catalogGuideCoursePayload(course: CatalogGuideAiRequest["pathCourses"][number]) {
+  const payload: {
+    courseId: string; title: string; provider: string; duration: string; level: string; sourceUrl: string;
+    evidence: "title" | "detailed"; competencyId: string; competencyName: string; rank: number; rationale: string;
+    highlighted?: boolean; description?: string; outcomes?: string[]; tags?: string[];
+  } = {
+    courseId: course.courseId, title: course.title, provider: course.provider, duration: course.duration,
+    level: course.level, sourceUrl: course.sourceUrl, evidence: course.evidence, competencyId: course.competencyId,
+    competencyName: course.competencyName, rank: course.rank, rationale: course.rationale,
+  };
+  if (course.highlighted !== undefined) payload.highlighted = course.highlighted;
+  if (course.evidence === "detailed") {
+    if (course.description !== undefined) payload.description = course.description;
+    if (course.learningOutcomes !== undefined) payload.outcomes = course.learningOutcomes;
+    if (course.tags !== undefined) payload.tags = course.tags;
+  }
+  return payload;
+}
+
+function promptForCatalogGuide(request: CatalogGuideAiRequest): string {
+  return JSON.stringify({
+    task: "Explain the official's current learning path. Return only schema-valid JSON.",
+    rules: [
+      "Write short, direct notes. One or two sentences per course.",
+      "Cite at most three relevant path courses. Prefer highlighted or rank-1 courses.",
+      "Do not hedge, do not say I think, do not add filler, do not invent courses.",
+      "Do not mention search terms or inferred competency domains as course facts.",
+      "If the question is outside the path, set unavailable to the canonical outside-path sentence and leave courseNotes empty.",
+    ],
+    matrixVersionId: request.matrixVersionId,
+    question: request.question,
+    results: request.results,
+    pathCourses: request.pathCourses.map(catalogGuideCoursePayload),
+  });
+}
+
+function seededCatalogGuide(request: CatalogGuideAiRequest): CatalogGuide {
+  if (isCatalogGuideIdentityQuestion(request.question)) {
+    return { schemaVersion: AI_SCHEMA_VERSION, gapSummary: CATALOG_GUIDE_IDENTITY_COPY, courseNotes: [], unavailable: "" };
+  }
+  if (request.pathCourses.length === 0) {
+    return { schemaVersion: AI_SCHEMA_VERSION, gapSummary: CATALOG_GUIDE_EMPTY_PATH_COPY, courseNotes: [], unavailable: CATALOG_GUIDE_EMPTY_PATH_COPY };
+  }
+  const highlighted = request.pathCourses.filter((course) => course.highlighted);
+  if (highlighted.length === 0 && questionOutsidePath(request)) {
+    return { schemaVersion: AI_SCHEMA_VERSION, gapSummary: gapSummaryFromResults(request), courseNotes: [], unavailable: CATALOG_GUIDE_OUTSIDE_PATH_COPY };
+  }
+  const first = request.pathCourses[0];
+  const asksForFirst = catalogGuideKeywords(request.question).includes("first") && first;
+  const relevant = (highlighted.length > 0 ? highlighted : asksForFirst && first ? [first] : request.pathCourses).slice(0, 3);
+  return {
+    schemaVersion: AI_SCHEMA_VERSION,
+    gapSummary: gapSummaryFromResults(request),
+    courseNotes: relevant.map((course) => ({
+      courseId: course.courseId,
+      note: `${course.title} is on the plan for the ${course.competencyName} skill gap.`,
+    })),
+    unavailable: "",
+  };
+}
+
 export function createAiAssessmentService(dependencies: Dependencies) {
   const now = dependencies.now ?? Date.now;
   const sleep = dependencies.sleep ?? ((milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)));
@@ -226,6 +319,20 @@ export function createAiAssessmentService(dependencies: Dependencies) {
           rubricReason: answer.rubric.find((entry) => entry.level === answer.fallbackDemonstratedLevel)?.criterion ?? answer.rubric[0]?.criterion ?? "No evidence available",
           ambiguity: "Provider evaluation unavailable",
         })) }, request),
+      });
+    },
+    async explainCatalogGuide(request: CatalogGuideAiRequest) {
+      const allowedCourseIds = request.pathCourses.map((course) => course.courseId);
+      if (isCatalogGuideIdentityQuestion(request.question)) {
+        const data = validateCatalogGuideOutput(seededCatalogGuide(request), allowedCourseIds);
+        return { data, provider: "seeded-fallback" as const, model: "seeded-bank-v1", requestId: "identity", attempts: 0, latencyMs: 0 };
+      }
+      return run({
+        operation: "explain_catalog_guide", assessmentSessionId: request.assessmentSessionId,
+        matrixVersionId: request.matrixVersionId, competencyIds: request.results.map((item) => item.competencyId),
+        questionCount: request.pathCourses.length, prompt: promptForCatalogGuide(request),
+        validate: (data) => validateCatalogGuideOutput(data, allowedCourseIds),
+        fallback: () => validateCatalogGuideOutput(seededCatalogGuide(request), allowedCourseIds),
       });
     },
     toLearnerQuestions: (data: GeneratedQuestions): LearnerQuestion[] => toLearnerQuestions(data),
