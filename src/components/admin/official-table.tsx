@@ -3,13 +3,11 @@
 import { useMemo, useState } from "react";
 import type { AdminOfficialSummary } from "@/data/admin-repository";
 
-type AssessmentFilter = "all" | "not_started" | "active" | "completed" | "provisional";
-type ReassessmentFilter = "all" | "eligible" | "not_due";
+type SimpleFilter = "all" | "not_started" | "assessed";
 
 export function OfficialTable({ officials }: { officials: AdminOfficialSummary[] }) {
   const [q, setQ] = useState("");
-  const [assessment, setAssessment] = useState<AssessmentFilter>("all");
-  const [reassessment, setReassessment] = useState<ReassessmentFilter>("all");
+  const [filter, setFilter] = useState<SimpleFilter>("all");
 
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
@@ -19,13 +17,12 @@ export function OfficialTable({ officials }: { officials: AdminOfficialSummary[]
         official.name.toLowerCase().includes(needle) ||
         official.employeeCode.toLowerCase().includes(needle) ||
         official.roleName.toLowerCase().includes(needle);
-      const normalized = (official.assessmentStatus ?? "not_started").toLowerCase() as AssessmentFilter;
-      const matchesAssessment = assessment === "all" || normalized === assessment;
-      const reassessKey: ReassessmentFilter = official.reassessmentEligible ? "eligible" : "not_due";
-      const matchesReassessment = reassessment === "all" || reassessKey === reassessment;
-      return matchesSearch && matchesAssessment && matchesReassessment;
+      const normalized = (official.assessmentStatus ?? "not_started").toLowerCase();
+      const isAssessed = normalized !== "not_started";
+      const matchesFilter = filter === "all" || (filter === "not_started" && normalized === "not_started") || (filter === "assessed" && isAssessed);
+      return matchesSearch && matchesFilter;
     });
-  }, [officials, q, assessment, reassessment]);
+  }, [officials, q, filter]);
 
   return (
     <div>
@@ -34,23 +31,16 @@ export function OfficialTable({ officials }: { officials: AdminOfficialSummary[]
           <span aria-hidden="true">⌕</span>
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search official, e.g. A-001" aria-label="Search officials" />
         </label>
-        <div className="admin-filter-group" role="group" aria-label="Filter by assessment">
-          <span className="muted" style={{ fontFamily: "var(--font-mono)", fontSize: 9, marginRight: 4, alignSelf: "center" }}>
-            Assessment
-          </span>
-          {(["all", "not_started", "active", "completed", "provisional"] as const).map((value) => (
-            <button key={`a-${value}`} type="button" className={`admin-filter-pill ${assessment === value ? "is-active" : ""}`} aria-pressed={assessment === value} onClick={() => setAssessment(value)}>
-              {value.replaceAll("_", " ")}
-            </button>
-          ))}
-        </div>
-        <div className="admin-filter-group" role="group" aria-label="Filter by reassessment">
-          <span className="muted" style={{ fontFamily: "var(--font-mono)", fontSize: 9, marginRight: 4, alignSelf: "center" }}>
-            Reassessment
-          </span>
-          {(["all", "eligible", "not_due"] as const).map((value) => (
-            <button key={`r-${value}`} type="button" className={`admin-filter-pill ${reassessment === value ? "is-active" : ""}`} aria-pressed={reassessment === value} onClick={() => setReassessment(value)}>
-              {value.replaceAll("_", " ")}
+        <div className="admin-filter-group" role="group" aria-label="Filter officials">
+          {(["all", "not_started", "assessed"] as const).map((value) => (
+            <button
+              key={value}
+              type="button"
+              className={`admin-filter-pill ${filter === value ? "is-active" : ""}`}
+              aria-pressed={filter === value}
+              onClick={() => setFilter(value)}
+            >
+              {value === "assessed" ? "Assessed" : value.replaceAll("_", " ")}
             </button>
           ))}
         </div>
