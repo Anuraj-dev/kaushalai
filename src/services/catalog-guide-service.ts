@@ -1,16 +1,15 @@
 import {
   AI_SCHEMA_VERSION,
-  CATALOG_GUIDE_EMPTY_PATH_COPY,
-  CATALOG_GUIDE_IDENTITY_COPY,
-  CATALOG_GUIDE_OUTSIDE_PATH_COPY,
-  isCatalogGuideIdentityQuestion,
-  createAiAssessmentService,
-  createConfiguredProviderAdapters,
   type CatalogGuide,
   type CatalogGuideAiRequest,
   type CatalogGuidePathCourse,
+  type PlatformChat,
+  type PlatformChatRequest,
+  createAiAssessmentService,
+  createConfiguredProviderAdapters,
 } from "@/ai";
 import type { KaushalDatabase } from "@/db/client";
+import { retrieveRagContext } from "./rag-retriever";
 
 type Row = Record<string, unknown>;
 
@@ -30,6 +29,7 @@ export type CatalogGuideCitedCourse = {
 
 export type CatalogGuideResponse = {
   schemaVersion: typeof AI_SCHEMA_VERSION;
+  answer: string;
   gapSummary: string;
   unavailable: string;
   citedCourses: CatalogGuideCitedCourse[];
@@ -37,35 +37,26 @@ export type CatalogGuideResponse = {
 };
 
 export type ExplainCatalogGuide = (request: CatalogGuideAiRequest) => Promise<{ data: CatalogGuide }>;
+export type ChatWithRag = (request: PlatformChatRequest) => Promise<{ data: PlatformChat }>;
 
 const parse = <T>(value: unknown, fallback: T): T => {
-  try { return value ? JSON.parse(String(value)) as T : fallback; } catch { return fallback; }
+  try {
+    return value ? (JSON.parse(String(value)) as T) : fallback;
+  } catch {
+    return fallback;
+  }
 };
 
 function httpError(message: string, status: number): never {
   throw Object.assign(new Error(message), { status });
 }
 
-const PATH_GUIDE_STOPWORDS = new Set([
-  "this", "that", "which", "does", "address", "first", "about", "your", "learning", "path",
-  "course", "courses", "recommended", "recommend", "gap", "gaps", "skill", "skills", "why",
-  "what", "when", "from", "with", "official", "competency", "matrix",
-]);
-
-function tokens(text: string): string[] {
-  return text.toLowerCase().match(/[a-z0-9]+/g)?.filter((word) => word.length >= 4) ?? [];
-}
-
-function distinctiveQuestionTokens(question: string): string[] {
-  return tokens(question).filter((word) => !PATH_GUIDE_STOPWORDS.has(word));
-}
-
-function defaultExplain(): ExplainCatalogGuide {
+function defaultChat(): ChatWithRag {
   const ai = createAiAssessmentService({
     ...createConfiguredProviderAdapters(),
     logger: (event) => console.warn(JSON.stringify(event)),
   });
-  return (request) => ai.explainCatalogGuide(request);
+  return (request) => ai.chat(request);
 }
 
 function text(value: unknown): string {
@@ -74,39 +65,16 @@ function text(value: unknown): string {
 
 function gapSummaryFromResults(results: CatalogGuideAiRequest["results"]): string {
   const names = results.filter((result) => result.gap > 0).map((result) => result.competencyName);
-  if (names.length === 0) return CATALOG_GUIDE_EMPTY_PATH_COPY;
+  if (names.length === 0) return "No current skill gaps on the assessed competencies.";
   return `Skill gaps in ${names.join(", ")}.`;
 }
 
-function suggestedNext(pathCourses: CatalogGuidePathCourse[]): string[] {
-  const chips = ["Why is this first?", "Which gap does this address?"];
-  const first = pathCourses[0];
+function suggestedNext(pathCourses: CatalogGuidePathCourse[], ragCourses: CatalogGuidePathCourse[]): string[] {
+  const chips = ["How does the assessment work?", "Explain my gaps", "How is the learning plan built?"];
+  // Keep one path-specific chip if path exists, but never empty-path loop
+  const first = pathCourses[0] ?? ragCourses[0];
   if (first) chips.push(`Why was ${first.title} recommended?`);
-  return chips;
-}
-
-function courseCorpus(course: CatalogGuidePathCourse): string {
-  return [
-    course.title,
-    course.provider,
-    course.competencyName,
-    course.rationale,
-    course.description ?? "",
-    ...(course.tags ?? []),
-    ...(course.learningOutcomes ?? []),
-  ].join(" ");
-}
-
-function highlightPathCourses(question: string, pathCourses: CatalogGuidePathCourse[]): { courses: CatalogGuidePathCourse[]; outsidePath: boolean } {
-  const questionTokens = new Set(tokens(question));
-  const distinctive = distinctiveQuestionTokens(question);
-  const courses = pathCourses.map((course) => {
-    const highlighted = questionTokens.size > 0 && tokens(courseCorpus(course)).some((word) => questionTokens.has(word));
-    return highlighted ? { ...course, highlighted: true } : { ...course, highlighted: false };
-  });
-  const corpus = new Set(pathCourses.flatMap((course) => tokens(courseCorpus(course))));
-  const outsidePath = distinctive.length > 0 && !distinctive.some((word) => corpus.has(word));
-  return { courses, outsidePath };
+  return chips.slice(0, 4);
 }
 
 function parseDetailedFields(detailJson: unknown): Pick<CatalogGuidePathCourse, "description" | "learningOutcomes" | "tags"> {
@@ -119,8 +87,14 @@ function parseDetailedFields(detailJson: unknown): Pick<CatalogGuidePathCourse, 
 }
 
 function loadResults(database: KaushalDatabase, assessmentId: string): CatalogGuideAiRequest["results"] {
-  return (database.prepare(`SELECT r.*,c.name FROM assessment_results r JOIN competencies c ON c.id=r.competency_id
-    WHERE r.assessment_id=? ORDER BY r.priority DESC,c.name`).all(assessmentId) as Row[]).map((row) => ({
+  return (
+    database
+      .prepare(
+        `SELECT r.*,c.name FROM assessment_results r JOIN competencies c ON c.id=r.competency_id
+    WHERE r.assessment_id=? ORDER BY r.priority DESC,c.name`,
+      )
+      .all(assessmentId) as Row[]
+  ).map((row) => ({
     competencyId: String(row.competency_id),
     competencyName: String(row.name),
     assessedLevel: Number(row.assessed_level),
@@ -133,11 +107,15 @@ function loadResults(database: KaushalDatabase, assessmentId: string): CatalogGu
 }
 
 function loadPathCourses(database: KaushalDatabase, assessmentId: string): CatalogGuidePathCourse[] {
-  const rows = database.prepare(`SELECT r.course_id,r.competency_id,r.rank,r.rationale,c.title,c.provider,c.duration,c.level,c.source_url,c.detail_available,c.detail_json,comp.name competency_name
+  const rows = database
+    .prepare(
+      `SELECT r.course_id,r.competency_id,r.rank,r.rationale,c.title,c.provider,c.duration,c.level,c.source_url,c.detail_available,c.detail_json,comp.name competency_name
     FROM recommendations r JOIN courses c ON c.id=r.course_id JOIN competencies comp ON comp.id=r.competency_id
-    WHERE r.assessment_id=? ORDER BY r.rank LIMIT 8`).all(assessmentId) as Row[];
+    WHERE r.assessment_id=? ORDER BY r.rank LIMIT 8`,
+    )
+    .all(assessmentId) as Row[];
   return rows.map((row) => {
-    const evidence = row.detail_available === 1 ? "detailed" as const : "title" as const;
+    const evidence = row.detail_available === 1 ? ("detailed" as const) : ("title" as const);
     const course: CatalogGuidePathCourse = {
       courseId: String(row.course_id),
       title: String(row.title),
@@ -156,7 +134,7 @@ function loadPathCourses(database: KaushalDatabase, assessmentId: string): Catal
   });
 }
 
-function cardFromPath(course: CatalogGuidePathCourse, note: string): CatalogGuideCitedCourse {
+function cardFromContext(course: CatalogGuidePathCourse, note: string): CatalogGuideCitedCourse {
   return {
     courseId: course.courseId,
     title: course.title,
@@ -172,13 +150,19 @@ function cardFromPath(course: CatalogGuidePathCourse, note: string): CatalogGuid
   };
 }
 
-function mapCitedCourses(pathCourses: CatalogGuidePathCourse[], notes: CatalogGuide["courseNotes"]): CatalogGuideCitedCourse[] {
-  const byId = new Map(pathCourses.map((course) => [course.courseId, course]));
+function mapCitedCourses(
+  allCourses: CatalogGuidePathCourse[],
+  citations: Array<{ courseId: string; note: string }>,
+): CatalogGuideCitedCourse[] {
+  const byId = new Map(allCourses.map((course) => [course.courseId, course]));
   const cited: CatalogGuideCitedCourse[] = [];
-  for (const item of notes) {
+  for (const item of citations) {
     const course = byId.get(item.courseId);
-    if (!course) httpError("Catalog guide references a course outside the learning path", 500);
-    cited.push(cardFromPath(course, item.note));
+    if (!course) {
+      // Do not throw - RAG citations may be filtered, just skip unknown
+      continue;
+    }
+    cited.push(cardFromContext(course, item.note));
   }
   return cited;
 }
@@ -186,68 +170,84 @@ function mapCitedCourses(pathCourses: CatalogGuidePathCourse[], notes: CatalogGu
 export class CatalogGuideService {
   constructor(
     private readonly database: KaushalDatabase,
-    private readonly explain: ExplainCatalogGuide = defaultExplain(),
+    private readonly handler: ChatWithRag | ExplainCatalogGuide = defaultChat(),
   ) {}
 
   async ask(assessmentId: string, question: string): Promise<CatalogGuideResponse> {
     const trimmed = question.trim();
     if (!trimmed) httpError("Question is required", 400);
+    if (trimmed.length > 2000) httpError("Question is too long", 400);
 
-    const assessment = this.database.prepare(`SELECT a.*,v.version,m.job_role_id FROM assessments a JOIN matrix_versions v ON v.id=a.matrix_version_id
-      JOIN competency_matrices m ON m.id=v.matrix_id WHERE a.id=?`).get(assessmentId) as Row | undefined;
+    const assessment = this.database
+      .prepare(
+        `SELECT a.*,v.version,m.job_role_id FROM assessments a JOIN matrix_versions v ON v.id=a.matrix_version_id
+      JOIN competency_matrices m ON m.id=v.matrix_id WHERE a.id=?`,
+      )
+      .get(assessmentId) as Row | undefined;
     if (!assessment) httpError("Assessment not found", 404);
-    const status = String(assessment.status);
-    if (status !== "completed" && status !== "provisional") httpError("Assessment is not finished", 400);
+    // General chatbot: do not block on assessment status. Allow any status for platform queries.
+    // Keep results/path even if not completed - gaps may be empty.
 
     const results = loadResults(this.database, assessmentId);
     const loaded = loadPathCourses(this.database, assessmentId);
-    const chips = suggestedNext(loaded);
 
-    if (isCatalogGuideIdentityQuestion(trimmed)) {
-      return {
-        schemaVersion: AI_SCHEMA_VERSION,
-        gapSummary: CATALOG_GUIDE_IDENTITY_COPY,
-        unavailable: "",
-        citedCourses: [],
-        suggestedNext: chips,
-      };
-    }
+    // RAG retrieval: full catalog + platform docs, always
+    const rag = retrieveRagContext(this.database, trimmed, loaded);
 
-    if (loaded.length === 0) {
-      return {
-        schemaVersion: AI_SCHEMA_VERSION,
-        gapSummary: gapSummaryFromResults(results),
-        unavailable: CATALOG_GUIDE_EMPTY_PATH_COPY,
-        citedCourses: [],
-        suggestedNext: chips,
-      };
-    }
+    const allContextCourses = [...loaded, ...rag.retrievedCourses];
+    // Dedup by courseId, keep pathCourses first
+    const dedup = new Map<string, CatalogGuidePathCourse>();
+    for (const c of allContextCourses) if (!dedup.has(c.courseId)) dedup.set(c.courseId, c);
+    const distinctAll = [...dedup.values()];
 
-    const { courses: pathCourses, outsidePath } = highlightPathCourses(trimmed, loaded);
-    const explained = await this.explain({
+    const chips = suggestedNext(loaded, rag.retrievedCourses);
+    const gapSummary = gapSummaryFromResults(results);
+
+    const request: PlatformChatRequest = {
       assessmentSessionId: assessmentId,
       matrixVersionId: String(assessment.matrix_version_id),
       question: trimmed,
       results,
-      pathCourses,
-    });
+      pathCourses: loaded,
+      ragCourses: rag.retrievedCourses,
+      platformDocs: rag.platformDocs.map((d) => ({ title: d.title, content: d.content })),
+    };
+
+    // Support both legacy ExplainCatalogGuide and new ChatWithRag injected via constructor
+    // Try calling handler as Chat, adapt if result is legacy CatalogGuide shape
+    let explained: { data: PlatformChat };
+    const handler = this.handler as ChatWithRag;
+    const raw = await (handler as unknown as (req: PlatformChatRequest) => Promise<{ data: unknown }>)(request);
+    // Detect legacy CatalogGuide shape (has gapSummary/courseNotes but no answer)
+    if (raw && typeof raw === "object" && "data" in raw && raw.data && typeof (raw.data as Record<string, unknown>).answer !== "string") {
+      const legacy = raw as { data: CatalogGuide };
+      // Adapt legacy CatalogGuide -> PlatformChat
+      explained = {
+        data: {
+          schemaVersion: AI_SCHEMA_VERSION,
+          answer: legacy.data.gapSummary || legacy.data.unavailable || legacy.data.courseNotes.map((n) => n.note).join(" ") || gapSummary,
+          citations: legacy.data.courseNotes,
+          gapSummary: legacy.data.gapSummary,
+          courseNotes: legacy.data.courseNotes,
+          unavailable: legacy.data.unavailable,
+        } as PlatformChat,
+      };
+    } else {
+      explained = raw as { data: PlatformChat };
+    }
     const data = explained.data;
 
-    if (outsidePath) {
-      return {
-        schemaVersion: AI_SCHEMA_VERSION,
-        gapSummary: data.gapSummary || gapSummaryFromResults(results),
-        unavailable: CATALOG_GUIDE_OUTSIDE_PATH_COPY,
-        citedCourses: [],
-        suggestedNext: chips,
-      };
-    }
+    // Always LLM-shaped response: answer from LLM, citations optional
+    const answer = data.answer?.trim() ? data.answer.trim() : data.gapSummary?.trim() ? data.gapSummary.trim() : gapSummary;
+    // Prefer citations, fallback to courseNotes for backward compat
+    const rawCitations = data.citations?.length ? data.citations : (data.courseNotes ?? []);
+    const citedCourses = mapCitedCourses(distinctAll, rawCitations);
 
-    const citedCourses = mapCitedCourses(pathCourses, data.courseNotes);
     return {
       schemaVersion: AI_SCHEMA_VERSION,
-      gapSummary: data.gapSummary,
-      unavailable: citedCourses.length === 0 && data.unavailable.trim() ? CATALOG_GUIDE_OUTSIDE_PATH_COPY : "",
+      answer,
+      gapSummary: data.gapSummary ?? gapSummary,
+      unavailable: data.unavailable ?? "",
       citedCourses,
       suggestedNext: chips,
     };
