@@ -7,7 +7,7 @@ export default function Home() {
     <section className="landing-hero" aria-labelledby="landing-title">
       <h1 id="landing-title">Build the skills your role demands</h1>
       <p className="landing-lede">Kaushal AI helps officials understand their skill gaps and what to learn next</p>
-      <div className="landing-actions"><Button asChild variant="primary"><Link href="/learner">Continue as an official</Link></Button><Button asChild variant="secondary"><Link href="/admin">Continue as administrator</Link></Button></div>
+      <div className="landing-actions"><Button asChild variant="primary"><Link href="/learner/login">Continue as an official</Link></Button><Button asChild variant="secondary"><Link href="/admin">Continue as administrator</Link></Button></div>
     </section>
 
     <section className="workflow-preview workflow-preview-decorated" aria-labelledby="workflow-title">

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ArrowRight, Eye, EyeOff, Pencil } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { CatalogGuidePanel } from "@/components/learner/catalog-guide-panel";
 import { Button } from "@/components/ui/button";
 
@@ -16,44 +16,44 @@ const officialStorageKey = "kaushal-active-official";
 const request = async (url: string, init?: RequestInit) => { const response = await fetch(url, init); const body = await response.json(); if (!response.ok) throw new Error(body.error ?? "Something went wrong"); return body; };
 
 export function LearnerJourney() {
-  const [officials, setOfficials] = useState<Official[]>([]);
+  const router = useRouter();
   const [session, setSession] = useState<Session | null>(null);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [transitionMessage, setTransitionMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [signedIn, setSignedIn] = useState(false);
-  const [showCredentials, setShowCredentials] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
-  const [employeeCode, setEmployeeCode] = useState("MOSPI-0001");
-  const [password, setPassword] = useState("kaushal-demo");
-  const [rememberDevice, setRememberDevice] = useState(true);
 
   useEffect(() => {
     let mounted = true;
     (async () => {
       try {
         const saved = window.localStorage.getItem(storageKey);
-        const list = await request("/api/officials?selectable=true");
-        if (mounted) setOfficials(list);
-        if (saved) {
-          try {
-            const restored = await request(`/api/learner/session?assessmentId=${encodeURIComponent(saved)}`);
-            if (mounted) {
-              setSession(restored);
-              window.localStorage.setItem(officialStorageKey, JSON.stringify({ name: restored.official.name }));
-              window.dispatchEvent(new Event("kaushal-assessment-started"));
-            }
-          } catch {
-            window.localStorage.removeItem(storageKey);
+        if (!saved) {
+          if (mounted) {
+            // No active assessment — redirect to distinct login URL
+            router.replace("/learner/login");
+            setLoading(false);
           }
+          return;
+        }
+        try {
+          const restored = await request(`/api/learner/session?assessmentId=${encodeURIComponent(saved)}`);
+          if (mounted) {
+            setSession(restored);
+            window.localStorage.setItem(officialStorageKey, JSON.stringify({ name: restored.official.name }));
+            window.dispatchEvent(new Event("kaushal-assessment-started"));
+          }
+        } catch {
+          window.localStorage.removeItem(storageKey);
+          window.localStorage.removeItem(officialStorageKey);
+          if (mounted) router.replace("/learner/login");
         }
       } catch (cause) { if (mounted) setError(cause instanceof Error ? cause.message : "Unable to load the official workspace"); }
       finally { if (mounted) setLoading(false); }
     })();
     return () => { mounted = false; };
-  }, []);
+  }, [router]);
 
   const currentQuestions = useMemo(() => session?.assessment.questions ?? [], [session]);
   const answered = useMemo(() => currentQuestions.filter((question) => answers[question.id]?.trim()).length, [answers, currentQuestions]);
@@ -63,22 +63,6 @@ export function LearnerJourney() {
     try { const value = await request("/api/learner/session", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, officialId }) }); setSession(value); window.localStorage.setItem(storageKey, value.assessment.id); window.localStorage.setItem(officialStorageKey, JSON.stringify({ name: value.official.name })); window.dispatchEvent(new Event("kaushal-assessment-started")); setAnswers({}); }
     catch (cause) { setError(cause instanceof Error ? cause.message : "Unable to start assessment"); }
     finally { setBusy(false); }
-  }
-
-  function signIn(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const official = officials.find((item) => item.employeeCode.toLowerCase() === employeeCode.trim().toLowerCase());
-    if (!employeeCode.trim() || !password.trim()) {
-      setError("Enter your employee code and password to continue.");
-      return;
-    }
-    if (!official) {
-      setError("We could not find that employee code. Try MOSPI-0001, MOSPI-0002, or MOSPI-0003.");
-      return;
-    }
-    setError(null);
-    setSignedIn(true);
-    void start(official.id);
   }
 
   async function submit() {
@@ -98,6 +82,7 @@ export function LearnerJourney() {
     setSession(null);
     setAnswers({});
     setError(null);
+    router.push("/learner/login");
   }
 
   async function completeCourse(item: Recommendation) {
@@ -109,31 +94,9 @@ export function LearnerJourney() {
   }
 
   if (loading) return <LoadingWorkspace />;
-  if (error && !session && !signedIn) return <div className="surface error-state"><div className="alert" role="alert">{error}</div><Button variant="primary" onClick={() => window.location.reload()}>Try again <span aria-hidden="true">→</span></Button></div>;
-  if (!session && !signedIn) return <section className="login-page" aria-labelledby="login-title">
-    <div className="login-intro">
-      <div className="login-title-wrap">
-        <h1 id="login-title">Sign in to your<br />official workspace</h1>
-        <p>Use your employee code to access your competency assessment. Assessment remains pinned to its starting matrix version.</p>
-      </div>
-    </div>
-    <form className="login-card" onSubmit={signIn}>
-      <div className="login-fields">
-        <label htmlFor="employee-code">Employee code</label>
-        <div className={`login-input-wrap ${error ? "has-error" : ""}`}><input id="employee-code" value={employeeCode} onChange={(event) => setEmployeeCode(event.target.value)} autoComplete="username" placeholder="MOSPI-0001" /><Pencil size={16} strokeWidth={1.7} aria-hidden="true" /></div>
-        <span className="field-help">Enter your employee code to continue</span>
-        <label htmlFor="password">Password</label>
-        <div className="login-input-wrap"><input id="password" type={showPassword ? "text" : "password"} value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" placeholder="Enter your password" /><button className="icon-button" type="button" onClick={() => setShowPassword((value) => !value)} aria-label={showPassword ? "Hide password" : "Show password"}>{showPassword ? <EyeOff size={18} strokeWidth={1.7} /> : <Eye size={18} strokeWidth={1.7} />}</button></div>
-        <label className="remember-row"><input type="checkbox" checked={rememberDevice} onChange={(event) => setRememberDevice(event.target.checked)} /> <span>Remember this device</span></label>
-      </div>
-      {error && <div className="login-error" role="alert">{error}</div>}
-      <Button className="login-submit" variant="primary" type="submit" disabled={busy}>Sign in <ArrowRight size={18} strokeWidth={1.7} /></Button>
-      <button className="credential-toggle" type="button" onClick={() => { setShowCredentials((value) => !value); setError(null); }}><span>{showCredentials ? "Use prefilled credentials" : "Change credentials"}</span><span aria-hidden="true">{showCredentials ? "↑" : "↓"}</span></button>
-      {showCredentials && <div className="credential-note"><strong>Demo credentials</strong><p>Use one of the seeded employee codes to enter as a different official. This prototype stores no real credentials.</p><div className="credential-codes">{["MOSPI-0001", "MOSPI-0002", "MOSPI-0003"].map((code) => <button className="credential-code-button" key={code} type="button" onClick={() => { setEmployeeCode(code); setError(null); }}>{code}</button>)}</div></div>}
-    </form>
-  </section>;
+  if (error && !session) return <div className="surface error-state"><div className="alert" role="alert">{error}</div><Button variant="primary" onClick={() => window.location.reload()}>Try again <span aria-hidden="true">→</span></Button></div>;
 
-  if (!session) return <div className="loading-state surface"><span className="loading-mark" aria-hidden="true"/><p>Opening the official workspace…</p></div>;
+  if (!session) return <div className="loading-state surface"><span className="loading-mark" aria-hidden="true"/><p>Redirecting to sign in…</p></div>;
 
   const isComplete = session.assessment.status === "completed" || session.assessment.status === "provisional";
   const currentStep = isComplete ? 4 : session.assessment.currentRound ?? 1;
