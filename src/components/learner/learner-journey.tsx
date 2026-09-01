@@ -9,7 +9,7 @@ type Official = { id: string; name: string; jobRoleName: string; employeeCode: s
 type Question = { id: string; competencyId: string; competencyName: string; format: "single_choice" | "short_text"; prompt: string; options: Array<{ id: string; text: string }> };
 type Result = { competencyId: string; competencyName: string; assessedLevel: number; requiredLevel: number; gap: number; priority: number; confidence: number; supported: boolean; evidence: Array<{ reason: string; source: string }> };
 type Recommendation = { id: string; courseId: string; competencyId: string; title: string; provider: string | null; duration: string | null; rank: number; rationale: string };
-type Session = { official: Official; matrix: { versionId: string; version: number; competencies: Array<{ competencyId: string; name: string; requiredLevel: number; importance: number }> }; history: Array<{ id: string; competencyName: string; source: string; level: number; courseTitle: string | null }>; assessment: { id: string; status: string; currentRound: number | null; roundKind: string | null; questions: Question[]; provisional: boolean }; results: Result[]; recommendations: Recommendation[]; reassessmentInvited: boolean; dashboard: { supportedCompetencies: number; totalCompetencies: number; openGaps: number; completedCourses: number } };
+type Session = { official: Official; matrix: { versionId: string; version: number; competencies: Array<{ competencyId: string; name: string; requiredLevel: number; importance: number }> }; history: Array<{ id: string; competencyName: string; source: string; level: number; courseTitle: string | null; courseId: string | null }>; assessment: { id: string; status: string; currentRound: number | null; roundKind: string | null; questions: Question[]; provisional: boolean }; results: Result[]; recommendations: Recommendation[]; reassessmentInvited: boolean; dashboard: { supportedCompetencies: number; totalCompetencies: number; openGaps: number; completedCourses: number } };
 
 const storageKey = "kaushal-active-assessment";
 const officialStorageKey = "kaushal-active-official";
@@ -164,18 +164,12 @@ function AssessmentResults({ session }: { session: Session }) {
 
 function LearningPlan({ session, onComplete, busy }: { session: Session; onComplete: (item: Recommendation) => void; busy: boolean }) {
   const [pending, setPending] = useState<Recommendation | null>(null);
-  const [completedIds, setCompletedIds] = useState<Set<string>>(() => new Set());
-  const isCompleted = (item: Recommendation) => completedIds.has(item.courseId) || session.history.some((h) => h.courseTitle === item.title);
+  const isCompleted = (item: Recommendation) => session.history.some((h) => h.courseId === item.courseId);
 
   async function confirm() {
     if (!pending) return;
     const item = pending;
     setPending(null);
-    setCompletedIds((prev) => {
-      const next = new Set(prev);
-      next.add(item.courseId);
-      return next;
-    });
     await onComplete(item);
   }
 

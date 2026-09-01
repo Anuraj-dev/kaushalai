@@ -35,25 +35,25 @@ export function LearnerLogin() {
         // If already signed in, redirect to workspace — different URL for auth vs workspace
         const saved = window.localStorage.getItem(storageKey);
         const savedOfficial = window.localStorage.getItem(officialStorageKey);
-        if (saved || savedOfficial) {
+        if (saved) {
           try {
-            if (saved) {
-              const restored = await request(`/api/learner/session?assessmentId=${encodeURIComponent(saved)}`);
-              if (mounted && restored?.assessment?.id) {
-                window.localStorage.setItem(officialStorageKey, JSON.stringify({ name: restored.official.name }));
-                window.dispatchEvent(new Event("kaushal-assessment-started"));
-                router.replace("/learner");
-                return;
-              }
-            } else if (savedOfficial && mounted) {
-              // Has official marker but no assessment — treat as signed in, go to workspace to resume
+            const restored = await request(`/api/learner/session?assessmentId=${encodeURIComponent(saved)}`);
+            if (mounted && restored?.assessment?.id) {
+              window.localStorage.setItem(officialStorageKey, JSON.stringify({ name: restored.official.name }));
+              window.dispatchEvent(new Event("kaushal-assessment-started"));
               router.replace("/learner");
               return;
             }
           } catch {
-            window.localStorage.removeItem(storageKey);
-            window.localStorage.removeItem(officialStorageKey);
+            // Stale assessment id — drop both markers and show sign-in.
           }
+          window.localStorage.removeItem(storageKey);
+          window.localStorage.removeItem(officialStorageKey);
+          window.dispatchEvent(new Event("kaushal-assessment-started"));
+        } else if (savedOfficial) {
+          // Official marker without an assessment id would bounce login ↔ workspace.
+          window.localStorage.removeItem(officialStorageKey);
+          window.dispatchEvent(new Event("kaushal-assessment-started"));
         }
         const list = await request("/api/officials?selectable=true");
         if (mounted) setOfficials(list);
