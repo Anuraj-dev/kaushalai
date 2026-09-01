@@ -1,4 +1,100 @@
+import Link from "next/link";
+
+import { Button } from "@/components/ui/button";
 import { AdminRepository } from "@/data/admin-repository";
-import { MetricCard } from "@/components/admin/metric-card";
+
 export const dynamic = "force-dynamic";
-export default function AnalyticsPage() { const analytics = new AdminRepository().analytics(); return <><header className="page-header admin-page-header"><div><h1>Readiness and learning analytics</h1><p>Totals use persisted assessments, supported results, recommendations, and course completions.</p></div><span className="tag">Organization evidence</span></header><section className="admin-metrics" aria-label="Organization totals"><MetricCard label="Officials" value={analytics.officials}/><MetricCard label="Completed assessments" value={analytics.completedAssessments}/><MetricCard label="Readiness" value={`${analytics.readinessPercent}%`}/><MetricCard label="Assessment coverage" value={`${analytics.assessmentCoveragePercent}%`}/><MetricCard label="Course assignments" value={analytics.courseAssignments}/><MetricCard label="Course completions" value={analytics.courseCompletions}/></section><section className="admin-gap-section"><div><span className="tag">Organization signal</span><h2>Supported gaps by domain</h2><p>These gaps are drawn from persisted assessment results.</p></div>{analytics.supportedGapsByDomain.length ? <ul className="admin-gap-list">{analytics.supportedGapsByDomain.map((item) => <li key={item.domain}><strong>{item.domain.replaceAll("_", " ")}</strong><span>{item.gaps} supported gaps</span></li>)}</ul> : <p>No supported competency gaps have been recorded yet.</p>}</section></>; }
+
+export default function AnalyticsPage() {
+  const analytics = new AdminRepository().analytics();
+  // Prototype seed: show demo data when DB is empty so analytics is not blank — all-or-nothing, no mixing
+  const isEmpty = analytics.completedAssessments === 0 && analytics.supportedGapsByDomain.length === 0 && analytics.courseAssignments === 0 && analytics.readinessPercent === 0 && analytics.assessmentCoveragePercent === 0;
+  const display = isEmpty
+    ? {
+        officials: 10,
+        completedAssessments: 4,
+        readinessPercent: 68,
+        assessmentCoveragePercent: 72,
+        courseAssignments: 24,
+        courseCompletions: 9,
+        supportedGapsByDomain: [
+          { domain: "data_analysis", gaps: 5 },
+          { domain: "public_policy", gaps: 3 },
+          { domain: "communication", gaps: 4 },
+        ],
+      }
+    : analytics;
+  const completionRate = display.courseAssignments ? Math.round((display.courseCompletions / display.courseAssignments) * 100) : 0;
+  const hasAssessments = display.completedAssessments > 0;
+  const hasAssignments = display.courseAssignments > 0;
+
+  return (
+    <>
+      <header className="page-header admin-page-header admin-page-header--governance">
+        <div>
+          <h1>Readiness and learning analytics</h1>
+        </div>
+      </header>
+      {isEmpty && <p className="analytics-demo-note"><span className="tag tag-lime">Demo preview</span> Showing sample data — no persisted assessments yet. Complete an assessment to see real organization evidence.</p>}
+
+      <section className="admin-analytics-strip" aria-label="Readiness overview">
+        <div className="admin-governance-metric">
+          <span>Readiness</span>
+          <strong>{display.readinessPercent}%</strong>
+          <small>{hasAssessments ? "Supported ≥ required" : "No results yet"}</small>
+        </div>
+        <div className="admin-governance-metric">
+          <span>Coverage</span>
+          <strong>{display.assessmentCoveragePercent}%</strong>
+          <small>{hasAssessments ? "Supported / total" : "No results yet"}</small>
+        </div>
+        <div className="admin-governance-metric">
+          <span>Completion rate</span>
+          <strong>{completionRate}%</strong>
+          <small>{hasAssignments ? `${display.courseCompletions} / ${display.courseAssignments}` : "No courses assigned yet"}</small>
+        </div>
+      </section>
+
+      <section className="analytics-ledger" aria-label="Supported gaps by domain">
+        <div className="analytics-ledger__head">
+          <h2>
+            Supported gaps by domain <span className="ledger-count">{display.supportedGapsByDomain.length} domains</span>
+          </h2>
+        </div>
+        {display.supportedGapsByDomain.length ? (
+          <div className="analytics-ledger__body">
+            {display.supportedGapsByDomain.map((item) => {
+              return (
+                <div key={item.domain} className="analytics-ledger-row">
+                  <strong>{item.domain.replaceAll("_", " ")}</strong>
+                  <span style={{ fontFamily: "var(--font-mono)", fontSize: 10 }}>{item.gaps} supported gaps</span>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="analytics-empty">
+            <div className="analytics-empty__icon" aria-hidden="true">
+              <span />
+            </div>
+            <strong>No supported gaps yet</strong>
+            <p>
+              Supported gaps appear here by domain once officials complete assessments. Ensure matrices have rubrics + course tags + questions, then check Officials.
+            </p>
+            <div className="analytics-empty__actions">
+              <Button asChild variant="secondary" size="sm">
+                <Link href="/admin">Review matrices</Link>
+              </Button>
+              <Button asChild variant="ghost" size="sm">
+                <Link href="/admin/officials">View officials</Link>
+              </Button>
+            </div>
+          </div>
+        )}
+      </section>
+      <p className="analytics-helper">
+        <strong>How it’s calculated:</strong> Readiness = supported results where assessed level ≥ required / all results · Coverage = supported / total results · Completion = completed / assigned courses.
+      </p>
+    </>
+  );
+}
