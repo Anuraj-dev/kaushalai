@@ -387,12 +387,12 @@ button:disabled { cursor: not-allowed; }
 #catalog-guide-overlay { position: fixed; inset: 0; z-index: 40; pointer-events: none; }
 #catalog-guide-overlay .catalog-guide-widget { pointer-events: auto; }
 .catalog-guide-widget { position: absolute; right: 24px; bottom: 24px; display: flex; flex-direction: column; align-items: flex-end; gap: 12px; width: auto; }
-.catalog-guide-widget.is-open { width: 440px; }
+.catalog-guide-widget.is-open { width: 384px; }
 @media (max-width: 480px) { .catalog-guide-widget.is-open { width: calc(100vw - 32px); right: 16px; left: 16px; } .catalog-guide-widget { right: 16px; bottom: 16px; } }
 .catalog-guide-launcher { display: grid; width: 56px; height: 56px; min-width: 44px; min-height: 44px; place-items: center; padding: 8px; border: 1px solid var(--ink); border-radius: var(--radius-sm); background: var(--lime); box-shadow: var(--shadow-float); }
 .catalog-guide-launcher img { width: 36px; height: 38px; object-fit: contain; }
 .catalog-guide-launcher:hover { background: var(--lime-card); }
-.catalog-guide-panel { display: flex; flex-direction: column; width: 100%; min-width: 0; max-height: min(680px, calc(100vh - 64px)); min-height: 420px; padding: 16px; overflow: hidden; border: 1px solid var(--ink); border-radius: var(--radius-sm); background: var(--paper); box-shadow: var(--shadow-float); }
+.catalog-guide-panel { display: flex; flex-direction: column; width: 100%; min-width: 0; height: min(680px, calc(100vh - 32px)); min-height: 600px; padding: 16px; overflow: hidden; border: 1px solid var(--ink); border-radius: var(--radius-sm); background: var(--paper); box-shadow: var(--shadow-float); }
 .catalog-guide-header { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto auto; gap: 10px; align-items: center; min-width: 0; }
 .catalog-guide-header img { width: 28px; height: 30px; object-fit: contain; }
 .catalog-guide-kicker { margin: 0; color: var(--muted); font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.02em; }
@@ -401,7 +401,7 @@ button:disabled { cursor: not-allowed; }
 .catalog-guide-close:hover { border-color: var(--ink); background: var(--lime-wash); }
 .catalog-guide-new-chat { display: grid; width: 44px; height: 44px; place-items: center; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--paper); color: var(--ink); }
 .catalog-guide-new-chat:hover { border-color: var(--ink); background: var(--lime-wash); }
-.catalog-guide-thread { display: grid; gap: 8px; min-width: 0; max-width: 100%; flex: 1 1 auto; max-height: 440px; min-height: 160px; margin-top: 14px; overflow-x: hidden; overflow-y: auto; }
+.catalog-guide-thread { display: grid; gap: 8px; min-width: 0; max-width: 100%; flex: 1 1 auto; min-height: 320px; margin-top: 14px; overflow-x: hidden; overflow-y: auto; align-content: start; }
 .catalog-guide-exchange { display: grid; gap: 8px; min-width: 0; }
 .catalog-guide-msg { min-width: 0; max-width: 100%; padding: 10px 12px; border-radius: var(--radius-sm); }
 .catalog-guide-msg p { margin: 0; font-size: 14px; line-height: 1.45; }
