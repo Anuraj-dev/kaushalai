@@ -120,7 +120,7 @@ export function session(db: KaushalDatabase, assessmentId: string) {
     history,
     assessment: { id: assessmentId, status: String(assessment.status), startedAt: String(assessment.started_at), currentRound: pending ? Number(pending.round_number) : null, roundKind: payload?.kind ?? null, questions: publicQuestions(payload?.questions ?? []), provisional: String(assessment.status) === "provisional" },
     results,
-    recommendations: recommendations.map((row) => ({ id: String(row.id), courseId: String(row.course_id), competencyId: String(row.competency_id), title: String(row.title), provider: row.provider ? String(row.provider) : null, duration: row.duration ? String(row.duration) : null, level: row.level ? String(row.level) : null, rank: Number(row.rank), rationale: String(row.rationale) })),
+    recommendations: recommendations.map((row) => ({ id: String(row.id), courseId: String(row.course_id), competencyId: String(row.competency_id), title: String(row.title), provider: row.provider ? String(row.provider) : null, duration: row.duration ? String(row.duration) : null, level: row.level ? String(row.level) : null, sourceUrl: String(row.source_url), rank: Number(row.rank), rationale: String(row.rationale) })),
     reassessmentInvited: invitations.length > 0 || matrixReassessment,
     dashboard: { supportedCompetencies: results.filter((item) => item.supported).length, totalCompetencies: matrix.length, openGaps: results.filter((item) => item.gap > 0).length, completedCourses },
   };

@@ -12,6 +12,7 @@ export function AppNavigation() {
   const pathname = usePathname();
   const router = useRouter();
   const [officialName, setOfficialName] = useState<string | null>(null);
+  const [officialRole, setOfficialRole] = useState<string | null>(null);
   const [adminName, setAdminName] = useState<string | null>(null);
 
   useEffect(() => {
@@ -20,12 +21,21 @@ export function AppNavigation() {
       try {
         const savedOfficial = window.localStorage.getItem(officialStorageKey);
         if (savedOfficial) {
-          if (!cancelled) setOfficialName(JSON.parse(savedOfficial).name ?? null);
-          return;
+          const parsed = JSON.parse(savedOfficial) as { name?: string; role?: string };
+          if (parsed.name && parsed.role) {
+            if (!cancelled) {
+              setOfficialName(parsed.name);
+              setOfficialRole(parsed.role);
+            }
+            return;
+          }
         }
         const assessmentId = window.localStorage.getItem("kaushal-active-assessment");
         if (!assessmentId) {
-          if (!cancelled) setOfficialName(null);
+          if (!cancelled) {
+            setOfficialName(null);
+            setOfficialRole(null);
+          }
           return;
         }
         const response = await fetch(`/api/learner/session?assessmentId=${encodeURIComponent(assessmentId)}`);
@@ -33,12 +43,17 @@ export function AppNavigation() {
         const session = await response.json();
         if (!cancelled && session.official?.name) {
           setOfficialName(session.official.name);
-          window.localStorage.setItem(officialStorageKey, JSON.stringify({ name: session.official.name }));
+          setOfficialRole(session.official.jobRoleName ?? "Official");
+          window.localStorage.setItem(officialStorageKey, JSON.stringify({ name: session.official.name, role: session.official.jobRoleName ?? "Official" }));
         } else if (!cancelled) {
           setOfficialName(null);
+          setOfficialRole(null);
         }
       } catch {
-        if (!cancelled) setOfficialName(null);
+        if (!cancelled) {
+          setOfficialName(null);
+          setOfficialRole(null);
+        }
       }
     };
     void syncOfficial();
@@ -88,6 +103,7 @@ export function AppNavigation() {
     window.dispatchEvent(new Event("kaushal-assessment-started"));
     window.dispatchEvent(new Event("kaushal-admin-signed-in"));
     setOfficialName(null);
+    setOfficialRole(null);
     setAdminName(null);
     // Avoid staying on protected workspace after logout
     if (pathname?.startsWith("/admin")) {
@@ -114,8 +130,8 @@ export function AppNavigation() {
             <Link href="/admin" className="nav-profile" aria-label={`Go to workspace, signed in as ${adminName}`}>
               <span className="nav-profile-status" aria-hidden="true" />
               <span>
-                <small>Signed in as</small>
                 <strong>{adminName}</strong>
+                <small>Administrator</small>
               </span>
             </Link>
             <Button className="nav-logout" size="sm" variant="secondary" onClick={logout}>
@@ -124,11 +140,11 @@ export function AppNavigation() {
           </>
         ) : officialName ? (
           <>
-            <Link href="/learner/plan" className="nav-profile" aria-label={`Go to workspace, signed in as ${officialName}`}>
+            <Link href="/learner/plan" className="nav-profile" aria-label={`Go to ${officialName}'s workspace, ${officialRole ?? "Official"}`}>
               <span className="nav-profile-status" aria-hidden="true" />
               <span>
-                <small>Signed in as</small>
                 <strong>{officialName}</strong>
+                <small>{officialRole ?? "Official"}</small>
               </span>
             </Link>
             <Button className="nav-logout" size="sm" variant="secondary" onClick={logout}>

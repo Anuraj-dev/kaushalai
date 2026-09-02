@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Building2, Clock } from "lucide-react";
+import { Building2, Clock, ExternalLink } from "lucide-react";
 import { CatalogGuidePanel } from "@/components/learner/catalog-guide-panel";
 import type { Recommendation, Session } from "@/components/learner/learner-session";
 import { Button } from "@/components/ui/button";
@@ -117,6 +117,16 @@ export function LearningPlan({ session, onComplete, onReassess, busy }: { sessio
                   <div className="course-card-head">
                     <div className="course-card-top">
                       <span className="tag tag-dark">Course {String(item.rank).padStart(2, "0")}</span>
+                      <a
+                        className="course-open-link"
+                        href={item.sourceUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        aria-label={`View ${item.title} course`}
+                        title="View course"
+                      >
+                        <ExternalLink size={17} strokeWidth={1.7} aria-hidden="true" />
+                      </a>
                     </div>
                     <h3 className="course-card-title">{item.title}</h3>
                   </div>
@@ -147,7 +157,7 @@ export function LearningPlan({ session, onComplete, onReassess, busy }: { sessio
                       onClick={() => setPending(item)}
                       disabled={busy || completed}
                     >
-                      {completed ? "Marked as complete ✓" : <>Mark complete <span aria-hidden="true">→</span></>}
+                      {completed ? "Completed" : <>Mark complete <span aria-hidden="true">→</span></>}
                     </Button>
                   </div>
                   </div>

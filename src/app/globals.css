@@ -82,9 +82,9 @@ button:disabled { cursor: not-allowed; }
 .nav-actions { display: flex; align-items: center; gap: 12px; margin-left: auto; }
 .nav-profile { display: flex; min-width: 0; align-items: center; gap: 9px; }
 .nav-profile-status { width: 8px; height: 8px; flex: 0 0 auto; border-radius: 50%; background: var(--lime); box-shadow: 0 0 0 3px var(--lime-wash); }
-.nav-profile > span:last-child { display: grid; gap: 1px; min-width: 0; }
-.nav-profile small { color: var(--muted); font-family: var(--font-mono); font-size: 9px; line-height: 1; }
-.nav-profile strong { max-width: 150px; overflow: hidden; font-size: 11px; font-weight: 500; line-height: 1.2; text-overflow: ellipsis; white-space: nowrap; }
+.nav-profile > span:last-child { display: grid; gap: 3px; min-width: 0; }
+.nav-profile small { max-width: 180px; overflow: hidden; color: var(--muted); font-size: 9px; line-height: 1.15; text-overflow: ellipsis; white-space: nowrap; }
+.nav-profile strong { max-width: 180px; overflow: hidden; font-size: 12px; font-weight: 600; line-height: 1.15; text-overflow: ellipsis; white-space: nowrap; }
 .nav-logout { min-height: 36px; padding: 0 13px; font-size: 11px; }
 .site-nav-admin { border-color: var(--ink); }
 .nav-cta-secondary { border-color: var(--ink); background: var(--paper); }
@@ -416,9 +416,14 @@ button:disabled { cursor: not-allowed; }
 .result-row strong { font-size: 14px; font-weight: 500; }
 .recommendation-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; margin-top: 20px; }
 .recommendation-section .muted { margin: 0; }
-.course-card { display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--paper); }
+.course-card { position: relative; display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--paper); transition: border-color 140ms ease-out, transform 140ms ease-out; }
+.course-card:hover, .course-card:focus-within { border-color: var(--ink); transform: translateY(-2px); }
 .course-card-head { min-height: 128px; padding: 16px 18px 14px; border-bottom: 1px solid var(--line); background: var(--lime-wash); }
 .course-card-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.course-open-link { display: grid; width: 36px; height: 36px; place-items: center; margin: -7px -8px -7px 0; color: var(--ink); }
+.course-open-link::after { position: absolute; z-index: 1; inset: 0; content: ""; }
+.course-open-link svg { position: relative; z-index: 2; transition: transform 140ms ease-out; }
+.course-open-link:hover svg, .course-open-link:focus-visible svg { transform: scale(1.12); }
 .course-card-title { margin: 10px 0 0; font-size: 16px; font-weight: 500; line-height: 1.3; letter-spacing: -0.01em; }
 .course-card-body { display: flex; flex: 1; flex-direction: column; gap: 12px; padding: 14px 18px 18px; }
 .course-card-done { border-color: var(--lime); background: var(--lime-wash); }
@@ -430,7 +435,8 @@ button:disabled { cursor: not-allowed; }
 .course-stat-label { color: var(--muted); font-family: var(--font-mono); font-size: 9px; line-height: 1; text-transform: uppercase; letter-spacing: 0.06em; }
 .course-stat-value { overflow: hidden; color: var(--ink); font-size: 12px; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
 .course-card-rationale { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
-.course-card-actions { display: flex; justify-content: flex-end; margin-top: auto; padding-top: 2px; }
+.course-card-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-top: auto; padding-top: 2px; }
+.course-card-actions .kaushal-button { position: relative; z-index: 3; gap: 7px; }
 .mark-button { border-color: var(--line-strong); background: var(--lime-wash); color: var(--ink); }
 .mark-button:hover:not(:disabled) { border-color: var(--ink); background: var(--lime-soft); }
 .result-meta { margin-top: 6px; color: var(--muted); font-family: var(--font-mono); font-size: 10px; line-height: 1.5; }
@@ -747,7 +753,7 @@ button:disabled { cursor: not-allowed; }
   .main-nav a { display: inline-flex; min-height: 44px; align-items: center; font-size: 11px; }
   .nav-actions { margin-left: auto; }
   .nav-profile strong { max-width: 110px; }
-  .nav-profile small { display: none; }
+  .nav-profile small { max-width: 110px; }
   .landing-hero { min-height: 560px; padding: 80px 20px 70px; }
   .landing-hero h1 { font-size: 32px; }
   .landing-lede { font-size: 17px; }
