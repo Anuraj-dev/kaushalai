@@ -114,40 +114,42 @@ export function LearningPlan({ session, onComplete, onReassess, busy }: { sessio
               const completed = isCompleted(item);
               return (
                 <article className={`course-card ${completed ? "course-card-done" : ""}`} key={item.id}>
-                  <div className="course-card-head">
-                    <div className="course-card-top">
-                      <span className="tag tag-dark">Course {String(item.rank).padStart(2, "0")}</span>
-                      <a
-                        className="course-open-link"
-                        href={item.sourceUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        aria-label={`View ${item.title} course`}
-                        title="View course"
-                      >
-                        <ExternalLink size={17} strokeWidth={1.7} aria-hidden="true" />
-                      </a>
-                    </div>
-                    <h3 className="course-card-title">{item.title}</h3>
-                  </div>
-                  <div className="course-card-body">
-                    <div className="course-card-stats">
-                    <div className="course-stat">
-                      <Building2 size={14} strokeWidth={1.7} aria-hidden="true" />
-                      <div>
-                        <span className="course-stat-label">Provider</span>
-                        <span className="course-stat-value">{item.provider ?? "iGOT catalog"}</span>
+                  <a
+                    className="course-card-link"
+                    href={item.sourceUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    aria-label={`View ${item.title} course`}
+                  >
+                    <div className="course-card-head">
+                      <div className="course-card-top">
+                        <span className="tag tag-dark">Course {String(item.rank).padStart(2, "0")}</span>
+                        <span className="course-open-icon" aria-hidden="true">
+                          <ExternalLink size={17} strokeWidth={1.7} aria-hidden="true" />
+                        </span>
                       </div>
+                      <h3 className="course-card-title">{item.title}</h3>
                     </div>
-                    <div className="course-stat">
-                      <Clock size={14} strokeWidth={1.7} aria-hidden="true" />
-                      <div>
-                        <span className="course-stat-label">Duration</span>
-                        <span className="course-stat-value">{item.duration ?? "Self paced"}</span>
+                    <div className="course-card-body">
+                      <div className="course-card-stats">
+                        <div className="course-stat">
+                          <Building2 size={14} strokeWidth={1.7} aria-hidden="true" />
+                          <div>
+                            <span className="course-stat-label">Provider</span>
+                            <span className="course-stat-value">{item.provider ?? "iGOT catalog"}</span>
+                          </div>
+                        </div>
+                        <div className="course-stat">
+                          <Clock size={14} strokeWidth={1.7} aria-hidden="true" />
+                          <div>
+                            <span className="course-stat-label">Duration</span>
+                            <span className="course-stat-value">{item.duration ?? "Self paced"}</span>
+                          </div>
+                        </div>
                       </div>
+                      <p className="course-card-rationale">{item.rationale}</p>
                     </div>
-                  </div>
-                  <p className="course-card-rationale">{item.rationale}</p>
+                  </a>
                   <div className="course-card-actions">
                     <Button
                       variant={completed ? "primary" : "secondary"}
@@ -159,7 +161,6 @@ export function LearningPlan({ session, onComplete, onReassess, busy }: { sessio
                     >
                       {completed ? "Completed" : <>Mark complete <span aria-hidden="true">→</span></>}
                     </Button>
-                  </div>
                   </div>
                 </article>
               );
