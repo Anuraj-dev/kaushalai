@@ -39,7 +39,7 @@ export class LearningService {
   }
 
   getPath(assessmentId: string) {
-    return this.database.prepare(`SELECT r.*,c.title,c.provider,c.duration,c.level FROM recommendations r JOIN courses c ON c.id=r.course_id WHERE r.assessment_id=? ORDER BY r.rank`).all(assessmentId);
+    return this.database.prepare(`SELECT r.*,c.title,c.provider,c.duration,c.level,c.source_url FROM recommendations r JOIN courses c ON c.id=r.course_id WHERE r.assessment_id=? ORDER BY r.rank`).all(assessmentId);
   }
 
   completeCourse(input: { officialId: string; courseId: string; competencyId: string; level?: number; verifiedAssessment?: boolean }) {

@@ -1,7 +1,7 @@
 export type Official = { id: string; name: string; jobRoleName: string; employeeCode: string };
 export type Question = { id: string; competencyId: string; competencyName: string; format: "single_choice" | "short_text"; prompt: string; options: Array<{ id: string; text: string }> };
 export type Result = { competencyId: string; competencyName: string; assessedLevel: number; requiredLevel: number; gap: number; priority: number; confidence: number; supported: boolean; evidence: Array<{ reason: string; source: string }> };
-export type Recommendation = { id: string; courseId: string; competencyId: string; title: string; provider: string | null; duration: string | null; rank: number; rationale: string };
+export type Recommendation = { id: string; courseId: string; competencyId: string; title: string; provider: string | null; duration: string | null; sourceUrl: string; rank: number; rationale: string };
 export type Session = {
   official: Official;
   matrix: { versionId: string; version: number; competencies: Array<{ competencyId: string; name: string; requiredLevel: number; importance: number }> };
@@ -34,7 +34,7 @@ export function isAssessmentComplete(session: Session | null | undefined): boole
 
 export function persistSession(session: Session): void {
   window.localStorage.setItem(storageKey, session.assessment.id);
-  window.localStorage.setItem(officialStorageKey, JSON.stringify({ name: session.official.name }));
+  window.localStorage.setItem(officialStorageKey, JSON.stringify({ name: session.official.name, role: session.official.jobRoleName }));
   window.dispatchEvent(new Event("kaushal-assessment-started"));
 }
 
