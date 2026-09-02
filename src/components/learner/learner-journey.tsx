@@ -152,46 +152,21 @@ export function LearnerJourney() {
         })}
       </ol>
       {error && <div className="alert" role="alert">{error}</div>}
-      <div className="journey-grid">
-        <div>
-          {transitionMessage ? (
-            <RoundTransition message={transitionMessage} />
-          ) : (
-            currentQuestions.length > 0 && (
-              <QuestionForm
-                key={session.assessment.currentRound}
-                questions={currentQuestions}
-                answers={answers}
-                setAnswers={setAnswers}
-                onSubmit={submit}
-                busy={busy}
-                round={session.assessment.currentRound ?? 1}
-                answered={answered}
-              />
-            )
-          )}
-        </div>
-        <aside className="side-panel">
-          <section className="surface history-panel">
-            <div className="panel-heading">
-              <span className="tag">Learning history</span>
-              <span className="panel-mark" aria-hidden="true">↘</span>
-            </div>
-            {session.history.length === 0 ? (
-              <p className="muted">No prior course evidence.</p>
-            ) : (
-              session.history.slice(0, 4).map((item) => (
-                <div className="history-item" key={item.id}>
-                  <strong>{item.competencyName}</strong>
-                  <span>
-                    {item.courseTitle ?? item.source} · level {item.level}
-                  </span>
-                </div>
-              ))
-            )}
-          </section>
-        </aside>
-      </div>
+      {transitionMessage ? (
+        <RoundTransition message={transitionMessage} />
+      ) : (
+        currentQuestions.length > 0 && (
+          <QuestionForm
+            key={session.assessment.currentRound}
+            questions={currentQuestions}
+            answers={answers}
+            setAnswers={setAnswers}
+            onSubmit={submit}
+            busy={busy}
+            round={session.assessment.currentRound ?? 1}
+          />
+        )
+      )}
       <CatalogGuidePanel
         assessmentId={session.assessment.id}
       />
@@ -266,7 +241,6 @@ function QuestionForm({
   onSubmit,
   busy,
   round,
-  answered,
 }: {
   questions: Question[];
   answers: Record<string, string>;
@@ -274,14 +248,13 @@ function QuestionForm({
   onSubmit: () => void;
   busy: boolean;
   round: number;
-  answered: number;
 }) {
   const [currentIndex, setCurrentIndex] = useState(0);
-  const roundName = round === 1 ? "Initial baseline" : round === 2 ? "Personalized evidence" : "Clarification";
   const currentQuestion = questions[currentIndex];
   const currentAnswered = Boolean(currentQuestion && answers[currentQuestion.id]?.trim());
-  const remaining = questions.length - answered;
-  const progress = questions.length === 0 ? 0 : Math.round((answered / questions.length) * 100);
+  const committed = questions.filter((question, index) => index !== currentIndex && answers[question.id]?.trim()).length;
+  const remaining = Math.max(0, questions.length - committed - 1);
+  const progress = questions.length === 0 ? 0 : Math.round((committed / questions.length) * 100);
 
   if (!currentQuestion) return null;
 
@@ -299,15 +272,7 @@ function QuestionForm({
         continueAssessment();
       }}
     >
-      <div className="round-heading">
-        <div>
-          <span className="tag tag-lime">Round {round}</span>
-          <h2>{round === 1 ? "Show us how you work today" : "A few focused questions"}</h2>
-        </div>
-        <span className="round-kind">{roundName}</span>
-      </div>
-      <p className="muted">{round === 1 ? "Choose the statement that best matches how you work today." : "Short answers help us understand the evidence behind your current level."}</p>
-      <div className="question-progress" aria-label={`${answered} of ${questions.length} questions answered, ${remaining} remaining`}>
+      <div className="question-progress" aria-label={`${committed} of ${questions.length} questions completed, ${remaining} remaining after this one`}>
         <div className="progress-copy">
           <strong>
             Question {currentIndex + 1} of {questions.length}
@@ -316,35 +281,19 @@ function QuestionForm({
             {remaining} {remaining === 1 ? "question" : "questions"} left
           </span>
         </div>
-        <div className="progress-track" role="progressbar" aria-valuemin={0} aria-valuemax={questions.length} aria-valuenow={answered}>
+        <div className="progress-track" role="progressbar" aria-valuemin={0} aria-valuemax={questions.length} aria-valuenow={committed}>
           <span style={{ width: `${progress}%` }} />
         </div>
       </div>
-      <div className="question-tabs" role="tablist" aria-label="Questions">
-        {questions.map((question, index) => (
-          <button
-            id={`question-tab-${question.id}`}
-            className={`question-tab ${index === currentIndex ? "current" : ""} ${answers[question.id]?.trim() ? "answered" : ""}`}
-            type="button"
-            role="tab"
-            aria-selected={index === currentIndex}
-            aria-controls={`question-${question.id}`}
-            key={question.id}
-            onClick={() => setCurrentIndex(index)}
-          >
-            <span className="sr-only">Question </span>
-            {index + 1}
-            <span className="sr-only">{answers[question.id]?.trim() ? ", answered" : ", not answered"}</span>
-          </button>
-        ))}
-      </div>
-      <div className="question-list">
-        <fieldset className="question" id={`question-${currentQuestion.id}`} role="tabpanel" aria-labelledby={`question-tab-${currentQuestion.id}`}>
-          <legend className="question-prompt">{currentQuestion.prompt}</legend>
+      <div className="question-workspace">
+        <section className="question-panel">
+          <p className="question-prompt">{currentQuestion.prompt}</p>
           <div className="question-context">
             <span className="tag">{currentQuestion.competencyName}</span>
-            <span>Question {String(currentIndex + 1).padStart(2, "0")}</span>
           </div>
+        </section>
+        <fieldset className="options-panel">
+          <legend className="sr-only">Options</legend>
           {currentQuestion.format === "single_choice" ? (
             <div className="choice-list">
               {currentQuestion.options.map((option) => (
@@ -364,7 +313,7 @@ function QuestionForm({
           ← Previous
         </Button>
         <span className="answer-count">
-          <strong>{answered}</strong> answered · {remaining} left
+          <strong>{committed}</strong> answered · {remaining} left
         </span>
         <Button variant="primary" type="button" onClick={continueAssessment} disabled={busy || !currentAnswered}>
           {busy ? "Saving…" : currentIndex < questions.length - 1 ? "Next question" : round === 3 ? "Finish assessment" : "Continue"}
