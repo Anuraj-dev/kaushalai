@@ -1,5 +1,6 @@
 import { AdminRepository } from "@/data/admin-repository";
 import { OfficialTable } from "@/components/admin/official-table";
+import { ADMIN_CHARTS_ENABLED, OfficialsCharts } from "@/components/admin/admin-charts";
 
 export const dynamic = "force-dynamic";
 
@@ -51,6 +52,8 @@ export default async function OfficialsPage() {
           </small>
         </div>
       </section>
+
+      {ADMIN_CHARTS_ENABLED ? <OfficialsCharts officials={officials} /> : null}
 
       <OfficialTable officials={officials} />
     </>

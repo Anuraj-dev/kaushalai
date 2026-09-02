@@ -1,10 +1,13 @@
 import { AdminRepository } from "@/data/admin-repository";
 import { RoleTable } from "@/components/admin/role-table";
+import { ADMIN_CHARTS_ENABLED, AdminDashboardCharts } from "@/components/admin/admin-charts";
 
 export const dynamic = "force-dynamic";
 
 export default function AdminPage() {
-  const roles = new AdminRepository().listRoles();
+  const repository = new AdminRepository();
+  const roles = repository.listRoles();
+  const evidence = repository.evidenceBreakdown();
   const drafts = roles.filter((role) => role.status === "draft").length;
   const published = roles.length - drafts;
   const atRisk = roles.filter((role) => role.competencyCount > 0 && Math.round((role.coveredCompetencies / role.competencyCount) * 100) < 75).length;
@@ -46,6 +49,8 @@ export default function AdminPage() {
           <small>Complete rubrics + tags + questions</small>
         </div>
       </section>
+
+      {ADMIN_CHARTS_ENABLED ? <AdminDashboardCharts roles={roles} evidence={evidence} /> : null}
 
       <RoleTable roles={roles} />
     </>
