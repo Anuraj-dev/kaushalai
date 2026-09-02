@@ -2,14 +2,14 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { openDatabase, type KaushalDatabase } from "@/db/client";
 import { migrate } from "@/db/migrate";
 import { importCatalog } from "@/data/catalog-import";
-import { seedFoundation } from "@/data/seeds";
+import { seedFoundation, seedOperationalData } from "@/data/seeds";
 import { AdminRepository } from "@/data/admin-repository";
 import { SqliteAssessmentRepository } from "@/data/repositories";
 
 describe("administrator matrix workspace", () => {
   let database: KaushalDatabase;
   let admin: AdminRepository;
-  beforeEach(() => { database = openDatabase(":memory:"); migrate(database); seedFoundation(database); importCatalog(database); admin = new AdminRepository(database); });
+  beforeEach(() => { database = openDatabase(":memory:"); migrate(database); seedFoundation(database); importCatalog(database); seedOperationalData(database); admin = new AdminRepository(database); });
   afterEach(() => database.close());
 
   it("lists all ten published matrices with complete question coverage", () => {
@@ -40,6 +40,15 @@ describe("administrator matrix workspace", () => {
   });
 
   it("computes analytics from persisted records", () => {
-    expect(admin.analytics()).toMatchObject({ officials: 10, completedAssessments: 0, courseAssignments: 0, courseCompletions: 0 });
+    const analytics = admin.analytics();
+    expect(analytics).toMatchObject({ officials: 10, completedAssessments: 4, courseAssignments: 12, courseCompletions: 7 });
+    expect(analytics.readinessPercent).toBeGreaterThan(0);
+    expect(analytics.assessmentCoveragePercent).toBeGreaterThan(0);
+    expect(analytics.supportedGapsByDomain.length).toBeGreaterThanOrEqual(3);
+  });
+
+  it("keeps the operational seed idempotent", () => {
+    seedOperationalData(database);
+    expect(admin.analytics()).toMatchObject({ completedAssessments: 4, courseAssignments: 12, courseCompletions: 7 });
   });
 });

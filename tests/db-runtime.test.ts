@@ -14,6 +14,7 @@ describe("runtime database bootstrap", () => {
 
       expect((database.prepare("SELECT COUNT(*) count FROM officials WHERE is_demo_selectable=1").get() as { count: number }).count).toBe(3);
       expect((database.prepare("SELECT COUNT(*) count FROM courses").get() as { count: number }).count).toBe(222);
+      expect((database.prepare("SELECT COUNT(*) count FROM assessments WHERE status='completed'").get() as { count: number }).count).toBe(4);
     } finally {
       database.close();
     }

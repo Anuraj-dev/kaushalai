@@ -28,6 +28,67 @@ export function seedFoundation(database: KaushalDatabase): void {
   seedCompetencyLibrary(database);
 }
 
+const OPERATIONAL_COHORT = [
+  { officialId: "official-04", completedAt: "2026-06-18 11:30:00", supportedThrough: 6, completions: 2 },
+  { officialId: "official-05", completedAt: "2026-07-04 15:10:00", supportedThrough: 5, completions: 2 },
+  { officialId: "official-06", completedAt: "2026-07-22 10:45:00", supportedThrough: 7, completions: 2 },
+  { officialId: "official-07", completedAt: "2026-08-12 16:20:00", supportedThrough: 5, completions: 1 },
+] as const;
+
+/** Seeds a small, traceable organization history after the iGOT catalog is available. */
+export function seedOperationalData(database: KaushalDatabase): void {
+  const courseCount = (database.prepare("SELECT COUNT(*) count FROM courses").get() as { count: number }).count;
+  if (courseCount === 0) throw new Error("Import the course catalog before seeding operational data");
+
+  const insertAssessment = database.prepare(`INSERT OR IGNORE INTO assessments
+    (id,official_id,matrix_version_id,status,started_at,completed_at) VALUES (?,?,?,'completed',datetime(?,'-2 days'),?)`);
+  const insertResult = database.prepare(`INSERT OR IGNORE INTO assessment_results
+    (id,assessment_id,competency_id,assessed_level,required_level,gap,priority,confidence,supported) VALUES (?,?,?,?,?,?,?,?,?)`);
+  const insertRecommendation = database.prepare(`INSERT OR IGNORE INTO recommendations
+    (id,assessment_id,competency_id,course_id,rank,rationale,created_at) VALUES (?,?,?,?,?,?,?)`);
+  const insertCompletion = database.prepare(`INSERT OR IGNORE INTO course_completions
+    (id,official_id,course_id,completed_at,verified_assessment_level) VALUES (?,?,?,?,?)`);
+
+  database.transaction(() => {
+    for (const cohort of OPERATIONAL_COHORT) {
+      const official = database.prepare(`SELECT o.job_role_id,v.id matrix_version_id
+        FROM officials o JOIN competency_matrices m ON m.job_role_id=o.job_role_id
+        JOIN matrix_versions v ON v.matrix_id=m.id AND v.status='published'
+        WHERE o.id=? ORDER BY v.version DESC LIMIT 1`).get(cohort.officialId) as { job_role_id: string; matrix_version_id: string } | undefined;
+      if (!official) throw new Error(`Missing published role matrix for ${cohort.officialId}`);
+
+      const assessmentId = `seed-assessment-${cohort.officialId}`;
+      insertAssessment.run(assessmentId, cohort.officialId, official.matrix_version_id, cohort.completedAt, cohort.completedAt);
+      const requirements = database.prepare(`SELECT mc.competency_id,mc.required_level,mc.importance
+        FROM matrix_competencies mc WHERE mc.matrix_version_id=? ORDER BY mc.competency_id`).all(official.matrix_version_id) as Array<{ competency_id: string; required_level: number; importance: number }>;
+
+      requirements.forEach((requirement, index) => {
+        const supported = index < cohort.supportedThrough;
+        const adjustment = index < 2 ? -1 : 0;
+        const assessedLevel = Math.max(1, Math.min(5, requirement.required_level + adjustment));
+        const gap = Math.max(0, requirement.required_level - assessedLevel);
+        insertResult.run(`seed-result-${cohort.officialId}-${requirement.competency_id}`, assessmentId, requirement.competency_id,
+          assessedLevel, requirement.required_level, gap, gap * requirement.importance, supported ? 0.82 : 0.61, supported ? 1 : 0);
+      });
+
+      const gaps = database.prepare(`SELECT competency_id,priority FROM assessment_results
+        WHERE assessment_id=? AND gap>0 ORDER BY supported DESC,priority DESC,competency_id`).all(assessmentId) as Array<{ competency_id: string; priority: number }>;
+      Array.from({ length: 3 }, (_, index) => ({ gap: gaps[index % gaps.length], index })).forEach(({ gap, index }) => {
+        const course = database.prepare(`SELECT c.id FROM courses c
+          LEFT JOIN course_competencies cc ON cc.course_id=c.id AND cc.competency_id=?
+          ORDER BY (cc.competency_id IS NOT NULL) DESC,c.detail_available DESC,c.title LIMIT 1 OFFSET ?`).get(gap.competency_id, index) as { id: string };
+        const recommendationId = `seed-recommendation-${cohort.officialId}-${index + 1}`;
+        insertRecommendation.run(recommendationId, assessmentId, gap.competency_id, course.id, index + 1,
+          `Assigned from the official's supported ${gap.competency_id.replace("competency-", "").replaceAll("-", " ")} gap.`, cohort.completedAt);
+        if (index < cohort.completions) {
+          insertCompletion.run(`seed-completion-${cohort.officialId}-${index + 1}`, cohort.officialId, course.id,
+            cohort.completedAt, Math.min(5, 2 + index));
+        }
+      });
+    }
+  })();
+}
+
 export function seedCompetencyLibrary(database: KaushalDatabase): void {
   validateCompetencySeeds();
   const competency = database.prepare("INSERT OR IGNORE INTO competencies(id,slug,name,domain,description) VALUES (?,?,?,?,?)");
