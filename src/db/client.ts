@@ -2,7 +2,7 @@ import Database from "better-sqlite3";
 import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { importCatalog } from "@/data/catalog-import";
-import { seedFoundation } from "@/data/seeds";
+import { seedFoundation, seedOperationalData } from "@/data/seeds";
 import { migrate } from "./migrate";
 
 export type KaushalDatabase = Database.Database;
@@ -29,6 +29,7 @@ export function initializeDatabase(database: KaushalDatabase): void {
   if (officials === 0) seedFoundation(database);
   const courses = (database.prepare("SELECT COUNT(*) count FROM courses").get() as { count: number }).count;
   if (courses === 0) importCatalog(database);
+  seedOperationalData(database);
 }
 
 export function getDatabase(): KaushalDatabase {

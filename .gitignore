@@ -16,3 +16,6 @@ test-results/
 *.log
 *.tsbuildinfo
 .DS_Store
+
+# Grok CLI cache
+.grok/

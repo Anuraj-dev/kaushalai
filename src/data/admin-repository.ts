@@ -7,6 +7,8 @@ export interface AdminMatrixCompetency { id: string; name: string; domain: strin
 export interface AdminMatrixDetail { roleId: string; roleName: string; versionId: string; version: number; status: string; publishedAt: string | null; competencies: AdminMatrixCompetency[]; availableCompetencies: Array<{ id: string; name: string; domain: string }> }
 export interface AdminOfficialSummary { id: string; employeeCode: string; name: string; roleName: string; assessmentStatus: string | null; reassessmentEligible: boolean; assignedCourses: number; completedCourses: number }
 export interface AdminAnalytics { officials: number; completedAssessments: number; readinessPercent: number; assessmentCoveragePercent: number; courseAssignments: number; courseCompletions: number; supportedGapsByDomain: Array<{ domain: string; gaps: number }> }
+export interface AdminEvidenceDomain { domain: string; total: number; supported: number; gaps: number }
+export interface AdminEvidenceRole { role: string; results: number }
 export interface MatrixInput { competencyId: string; requiredLevel: number; importance: number }
 
 type Row = Record<string, unknown>;
@@ -108,5 +110,20 @@ export class AdminRepository {
     // diverging from domain/assessment/scoring.ts:145 weighted readiness (attainment * importance / importanceTotal) which is per-assessment learner readiness.
     // Intentionally separate metric: org pass rate vs learner readiness. No logic change.
     return { officials: number(totals.officials), completedAssessments: number(totals.completed), readinessPercent: resultCount ? Math.round(number(totals.ready) / resultCount * 100) : 0, assessmentCoveragePercent: resultCount ? Math.round(number(totals.supported) / resultCount * 100) : 0, courseAssignments: number(totals.assignments), courseCompletions: number(totals.completions), supportedGapsByDomain: gaps.map((row) => ({ domain: String(row.domain), gaps: number(row.gaps) })) };
+  }
+
+  evidenceBreakdown(): { domains: AdminEvidenceDomain[]; roles: AdminEvidenceRole[] } {
+    const domains = this.database.prepare(`SELECT c.domain domain, COUNT(*) total,
+      SUM(CASE WHEN ar.supported=1 THEN 1 ELSE 0 END) supported,
+      SUM(CASE WHEN ar.supported=1 AND ar.gap>0 THEN 1 ELSE 0 END) gaps
+      FROM assessment_results ar JOIN competencies c ON c.id=ar.competency_id GROUP BY c.domain ORDER BY total DESC`).all() as Row[];
+    const roles = this.database.prepare(`SELECT r.name role, COUNT(*) results
+      FROM assessment_results ar JOIN assessments a ON a.id=ar.assessment_id
+      JOIN officials o ON o.id=a.official_id JOIN job_roles r ON r.id=o.job_role_id
+      GROUP BY r.id ORDER BY results DESC`).all() as Row[];
+    return {
+      domains: domains.map((row) => ({ domain: String(row.domain), total: number(row.total), supported: number(row.supported), gaps: number(row.gaps) })),
+      roles: roles.map((row) => ({ role: String(row.role), results: number(row.results) })),
+    };
   }
 }

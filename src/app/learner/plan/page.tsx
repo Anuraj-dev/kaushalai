@@ -4,7 +4,7 @@ export const dynamic = "force-dynamic";
 
 export default function LearnerPlanPage() {
   return (
-    <main id="main-content" className="page-shell">
+    <main id="main-content" className="page-shell plan-shell">
       <LearnerPlan />
     </main>
   );

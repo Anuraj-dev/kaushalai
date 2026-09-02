@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { Button } from "@/components/ui/button";
 import { AdminRepository } from "@/data/admin-repository";
+import { ADMIN_CHARTS_ENABLED, AnalyticsCharts } from "@/components/admin/admin-charts";
 
 export const dynamic = "force-dynamic";
 
@@ -37,25 +38,33 @@ export default function AnalyticsPage() {
       </header>
       {isEmpty && <p className="analytics-demo-note"><span className="tag tag-lime">Demo preview</span> Showing sample data — no persisted assessments yet. Complete an assessment to see real organization evidence.</p>}
 
-      <section className="admin-analytics-strip" aria-label="Readiness overview">
-        <div className="admin-governance-metric">
-          <span>Readiness</span>
-          <strong>{display.readinessPercent}%</strong>
-          <small>{hasAssessments ? "Supported ≥ required" : "No results yet"}</small>
-        </div>
-        <div className="admin-governance-metric">
-          <span>Coverage</span>
-          <strong>{display.assessmentCoveragePercent}%</strong>
-          <small>{hasAssessments ? "Supported / total" : "No results yet"}</small>
-        </div>
-        <div className="admin-governance-metric">
-          <span>Completion rate</span>
-          <strong>{completionRate}%</strong>
-          <small>{hasAssignments ? `${display.courseCompletions} / ${display.courseAssignments}` : "No courses assigned yet"}</small>
-        </div>
-      </section>
+      {ADMIN_CHARTS_ENABLED ? (
+        <AnalyticsCharts
+          metrics={{ readinessPercent: display.readinessPercent, assessmentCoveragePercent: display.assessmentCoveragePercent, completionRate }}
+          gaps={display.supportedGapsByDomain}
+        />
+      ) : (
+        <section className="admin-analytics-strip" aria-label="Readiness overview">
+          <div className="admin-governance-metric">
+            <span>Readiness</span>
+            <strong>{display.readinessPercent}%</strong>
+            <small>{hasAssessments ? "Supported ≥ required" : "No results yet"}</small>
+          </div>
+          <div className="admin-governance-metric">
+            <span>Coverage</span>
+            <strong>{display.assessmentCoveragePercent}%</strong>
+            <small>{hasAssessments ? "Supported / total" : "No results yet"}</small>
+          </div>
+          <div className="admin-governance-metric">
+            <span>Completion rate</span>
+            <strong>{completionRate}%</strong>
+            <small>{hasAssignments ? `${display.courseCompletions} / ${display.courseAssignments}` : "No courses assigned yet"}</small>
+          </div>
+        </section>
+      )}
 
-      <section className="analytics-ledger" aria-label="Supported gaps by domain">
+      {ADMIN_CHARTS_ENABLED && display.supportedGapsByDomain.length > 0 ? null : (
+        <section className="analytics-ledger" aria-label="Supported gaps by domain">
         <div className="analytics-ledger__head">
           <h2>
             Supported gaps by domain <span className="ledger-count">{display.supportedGapsByDomain.length} domains</span>
@@ -90,8 +99,9 @@ export default function AnalyticsPage() {
               </Button>
             </div>
           </div>
-        )}
-      </section>
+          )}
+        </section>
+      )}
       <p className="analytics-helper">
         <strong>How it’s calculated:</strong> Readiness = supported results where assessed level ≥ required / all results · Coverage = supported / total results · Completion = completed / assigned courses.
       </p>

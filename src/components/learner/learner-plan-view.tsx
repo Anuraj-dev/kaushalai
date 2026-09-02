@@ -1,9 +1,52 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { Building2, Clock } from "lucide-react";
 import { CatalogGuidePanel } from "@/components/learner/catalog-guide-panel";
 import type { Recommendation, Session } from "@/components/learner/learner-session";
 import { Button } from "@/components/ui/button";
+
+function useEscapeClose(active: boolean, onClose: () => void) {
+  useEffect(() => {
+    if (!active) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [active, onClose]);
+}
+
+export function HistoryDialog({ history, onClose }: { history: Session["history"]; onClose: () => void }) {
+  return (
+    <div className="kaushal-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="learning-history-title" onClick={onClose}>
+      <div className="kaushal-modal kaushal-modal-history" onClick={(event) => event.stopPropagation()}>
+        <div className="kaushal-modal-heading">
+          <h3 id="learning-history-title">Learning history</h3>
+          <button type="button" className="kaushal-modal-close" aria-label="Close" autoFocus onClick={onClose}>
+            ×
+          </button>
+        </div>
+        {history.length === 0 ? (
+          <p className="history-empty">
+            No prior course evidence. Mark a recommended course complete to start your history.
+          </p>
+        ) : (
+          <div className="kaushal-history-list">
+            {history.map((item) => (
+              <div className="history-item" key={item.id}>
+                <strong>{item.competencyName}</strong>
+                <span>
+                  {item.courseTitle ?? item.source} · level {item.level}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 export function AssessmentResults({ session }: { session: Session }) {
   return (
@@ -31,9 +74,14 @@ export function AssessmentResults({ session }: { session: Session }) {
   );
 }
 
-export function LearningPlan({ session, onComplete, busy }: { session: Session; onComplete: (item: Recommendation) => void; busy: boolean }) {
+export function LearningPlan({ session, onComplete, onReassess, busy }: { session: Session; onComplete: (item: Recommendation) => void; onReassess?: () => void; busy: boolean }) {
   const [pending, setPending] = useState<Recommendation | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const isCompleted = (item: Recommendation) => session.history.some((h) => h.courseId === item.courseId);
+  useEscapeClose(Boolean(pending), () => {
+    if (!busy) setPending(null);
+  });
+  useEscapeClose(historyOpen, () => setHistoryOpen(false));
 
   async function confirm() {
     if (!pending) return;
@@ -44,12 +92,20 @@ export function LearningPlan({ session, onComplete, busy }: { session: Session; 
 
   return (
     <>
-      <section className="surface recommendation-card">
-        <div className="section-label">
-          <span className="tag tag-dark">Learning plan</span>
-          <span className="muted">Prioritized from current gaps</span>
+      <section className="recommendation-section">
+        <div className="plan-heading">
+          <h2>Your learning plan</h2>
+          <div className="plan-actions">
+            {session.reassessmentInvited && onReassess && (
+              <Button variant="secondary" size="sm" type="button" onClick={onReassess} disabled={busy}>
+                Start reassessment <span aria-hidden="true">→</span>
+              </Button>
+            )}
+            <Button variant="secondary" size="sm" type="button" className="history-open" onClick={() => setHistoryOpen(true)}>
+              Learning history
+            </Button>
+          </div>
         </div>
-        <h2>Start with the highest-priority gaps</h2>
         {session.recommendations.length === 0 ? (
           <p className="muted">No verified course is available for the current gaps.</p>
         ) : (
@@ -57,21 +113,45 @@ export function LearningPlan({ session, onComplete, busy }: { session: Session; 
             {session.recommendations.map((item) => {
               const completed = isCompleted(item);
               return (
-                <div className="recommendation-row" key={item.id}>
-                  <div>
-                    <strong>
-                      {item.rank}. {item.title}
-                    </strong>
-                    <div className="result-meta">
-                      {item.provider ?? "iGOT catalog"} {item.duration ? `· ${item.duration}` : ""}
-                      <br />
-                      {item.rationale}
+                <article className={`course-card ${completed ? "course-card-done" : ""}`} key={item.id}>
+                  <div className="course-card-head">
+                    <div className="course-card-top">
+                      <span className="tag tag-dark">Course {String(item.rank).padStart(2, "0")}</span>
+                    </div>
+                    <h3 className="course-card-title">{item.title}</h3>
+                  </div>
+                  <div className="course-card-body">
+                    <div className="course-card-stats">
+                    <div className="course-stat">
+                      <Building2 size={14} strokeWidth={1.7} aria-hidden="true" />
+                      <div>
+                        <span className="course-stat-label">Provider</span>
+                        <span className="course-stat-value">{item.provider ?? "iGOT catalog"}</span>
+                      </div>
+                    </div>
+                    <div className="course-stat">
+                      <Clock size={14} strokeWidth={1.7} aria-hidden="true" />
+                      <div>
+                        <span className="course-stat-label">Duration</span>
+                        <span className="course-stat-value">{item.duration ?? "Self paced"}</span>
+                      </div>
                     </div>
                   </div>
-                  <Button variant={completed ? "primary" : "secondary"} type="button" onClick={() => setPending(item)} disabled={busy || completed}>
-                    {completed ? "Completed ✓" : <>Mark complete <span aria-hidden="true">→</span></>}
-                  </Button>
-                </div>
+                  <p className="course-card-rationale">{item.rationale}</p>
+                  <div className="course-card-actions">
+                    <Button
+                      variant={completed ? "primary" : "secondary"}
+                      size="sm"
+                      type="button"
+                      className={completed ? undefined : "mark-button"}
+                      onClick={() => setPending(item)}
+                      disabled={busy || completed}
+                    >
+                      {completed ? "Marked as complete ✓" : <>Mark complete <span aria-hidden="true">→</span></>}
+                    </Button>
+                  </div>
+                  </div>
+                </article>
               );
             })}
           </div>
@@ -82,6 +162,7 @@ export function LearningPlan({ session, onComplete, busy }: { session: Session; 
           </div>
         )}
       </section>
+      {historyOpen && <HistoryDialog history={session.history} onClose={() => setHistoryOpen(false)} />}
       {pending && (
         <div className="kaushal-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="confirm-complete-title" onClick={() => !busy && setPending(null)}>
           <div className="kaushal-modal" onClick={(event) => event.stopPropagation()}>
@@ -124,43 +205,7 @@ export function LearnerPlanLayout({
 }) {
   return (
     <>
-      <header className="page-header learner-header">
-        <div>
-          <h1>{session.official.name}</h1>
-          <p>{session.official.jobRoleName}</p>
-        </div>
-        {session.reassessmentInvited && onReassess && (
-          <Button variant="secondary" onClick={onReassess} disabled={busy}>
-            Start reassessment <span aria-hidden="true">→</span>
-          </Button>
-        )}
-      </header>
-      <div className="journey-grid">
-        <div>
-          <LearningPlan session={session} onComplete={onComplete} busy={busy} />
-        </div>
-        <aside className="side-panel">
-          <AssessmentResults session={session} />
-          <section className="surface history-panel">
-            <div className="panel-heading">
-              <span className="tag">Learning history</span>
-              <span className="panel-mark" aria-hidden="true">↘</span>
-            </div>
-            {session.history.length === 0 ? (
-              <p className="muted">No prior course evidence.</p>
-            ) : (
-              session.history.slice(0, 4).map((item) => (
-                <div className="history-item" key={item.id}>
-                  <strong>{item.competencyName}</strong>
-                  <span>
-                    {item.courseTitle ?? item.source} · level {item.level}
-                  </span>
-                </div>
-              ))
-            )}
-          </section>
-        </aside>
-      </div>
+      <LearningPlan session={session} onComplete={onComplete} onReassess={onReassess} busy={busy} />
       <CatalogGuidePanel
         assessmentId={session.assessment.id}
       />
