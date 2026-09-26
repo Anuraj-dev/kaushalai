@@ -40,7 +40,15 @@ export default function AnalyticsPage() {
 
       {ADMIN_CHARTS_ENABLED ? (
         <AnalyticsCharts
-          metrics={{ readinessPercent: display.readinessPercent, assessmentCoveragePercent: display.assessmentCoveragePercent, completionRate }}
+          metrics={{
+            readinessPercent: display.readinessPercent,
+            assessmentCoveragePercent: display.assessmentCoveragePercent,
+            completionRate,
+            courseCompletions: display.courseCompletions,
+            courseAssignments: display.courseAssignments,
+            completedAssessments: display.completedAssessments,
+            officials: display.officials,
+          }}
           gaps={display.supportedGapsByDomain}
         />
       ) : (

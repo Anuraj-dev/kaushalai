@@ -9,7 +9,7 @@ import type { AdminOfficialSummary, AdminRoleSummary, AdminEvidenceDomain, Admin
 export const ADMIN_CHARTS_ENABLED = true;
 
 const KCH_CSS = `
-.kch-section { margin: 4px 0 22px; animation: kch-rise 420ms ease-out both; }
+.kch-section { margin: 4px 0 22px; }
 .kch-head { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin-bottom: 10px; }
 .kch-head h2 { margin: 0; font-size: 13px; font-weight: 700; letter-spacing: -0.02em; }
 .kch-grid { display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); gap: 14px; align-items: stretch; }
@@ -23,7 +23,7 @@ const KCH_CSS = `
 .kch-bar-row:hover { background: var(--lime-wash); }
 .kch-bar-label { flex: 0 0 168px; overflow: hidden; color: var(--ink); font-family: var(--font-mono); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .kch-bar-track { display: flex; flex: 1 1 auto; min-width: 0; height: 13px; overflow: hidden; border: 1px solid var(--ink); border-radius: 2px; background: var(--paper); }
-.kch-bar-fill { display: block; height: 100%; flex: 0 0 auto; background: var(--lime); transform-origin: left center; animation: kch-grow 620ms ease-out both; }
+.kch-bar-fill { display: block; height: 100%; flex: 0 0 auto; background: var(--lime); }
 .kch-bar-fill--lime { background: var(--lime); }
 .kch-bar-rest { display: block; height: 100%; flex: 1 1 auto; background: repeating-linear-gradient(45deg, transparent 0 3px, var(--line) 3px 4px); }
 .kch-bar-value { flex: 0 0 auto; min-width: 96px; text-align: right; font-family: var(--font-mono); font-size: 10px; color: var(--muted); }
@@ -51,25 +51,30 @@ const KCH_CSS = `
 .kch-flow-branch { display: flex; align-items: center; gap: 7px; margin-top: 10px; color: var(--warning); font-family: var(--font-mono); font-size: 10px; font-weight: 700; }
 
 .kch-rail { height: 14px; overflow: hidden; margin: 10px 0 8px; border: 1px solid var(--ink); border-radius: 2px; background: var(--paper); }
-.kch-rail span { display: block; height: 100%; background: var(--lime); transform-origin: left center; animation: kch-grow 620ms ease-out both; }
+.kch-rail span { display: block; height: 100%; background: var(--lime); }
 .kch-rail-caption { margin: 0; color: var(--muted); font-family: var(--font-mono); font-size: 10px; }
 .kch-big-number { margin: 4px 0 0; font-size: 26px; font-weight: 500; letter-spacing: -0.03em; line-height: 1.1; }
 .kch-big-number small { font-size: 15px; color: var(--muted); font-weight: 400; }
 
-.kch-gauges { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
-.kch-gauge { min-width: 0; padding: 12px 10px 10px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--paper); text-align: center; }
-.kch-gauge svg { width: 100%; max-width: 190px; height: auto; }
-.kch-gauge-track { stroke: var(--line); }
-.kch-gauge-value { stroke: var(--lime); }
-.kch-gauge-tick { stroke: var(--line-strong); stroke-width: 1.5; }
-.kch-gauge-number { font-family: var(--font-sans); font-size: 25px; font-weight: 500; letter-spacing: -0.03em; fill: var(--ink); }
-.kch-gauge-number tspan { font-size: 13px; }
-.kch-gauge-caption { margin: 6px 0 0; color: var(--muted); font-family: var(--font-mono); font-size: 9px; }
+.kch-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.kch-stat { display: flex; min-width: 0; flex-direction: column; gap: 8px; padding: 16px 18px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--paper); }
+.kch-stat-label { color: var(--muted); font-family: var(--font-mono); font-size: 10px; }
+.kch-stat-value { font-size: 40px; font-weight: 500; line-height: 1; letter-spacing: -0.04em; }
+.kch-stat-value small { margin-left: 2px; color: var(--muted); font-size: 18px; letter-spacing: -0.02em; }
+.kch-stat-bar { height: 6px; overflow: hidden; border: 1px solid var(--ink); border-radius: 2px; background: var(--paper); }
+.kch-stat-bar span { display: block; height: 100%; background: var(--lime); }
+.kch-stat-detail { margin: auto 0 0; color: var(--muted); font-size: 12px; line-height: 1.4; }
+@media (max-width: 980px) { .kch-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 420px) { .kch-stat-value { font-size: 32px; } .kch-stat { padding: 14px; } }
 
-@keyframes kch-grow { from { transform: scaleX(0); } to { transform: scaleX(1); } }
-@keyframes kch-rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
-@media (prefers-reduced-motion: reduce) { .kch-bar-fill, .kch-rail span, .kch-section { animation: none; } }
+/* Bar growth motion lives with the other motion rules in globals.css. */
 @media (max-width: 980px) { .kch-grid { grid-template-columns: 1fr; } .kch-bar-label { flex-basis: 120px; } }
+/* Narrow screens: label on its own line, bar and count underneath. */
+@media (max-width: 560px) {
+  .kch-bar-row { flex-wrap: wrap; gap: 6px 10px; padding: 9px 0; }
+  .kch-bar-label { flex: 1 1 100%; overflow: visible; white-space: normal; }
+  .kch-bar-value { min-width: 104px; }
+}
 `;
 
 function ChartStyle() {
@@ -204,50 +209,22 @@ function StatusDonut({ published, drafts }: { published: number; drafts: number 
   );
 }
 
-const GAUGE = { cx: 90, cy: 102, r: 70 };
-
-function Gauge({ value, label, hint }: { value: number; label: string; hint: string }) {
-  const clamped = Math.max(0, Math.min(100, value));
-  const ticks = [0, 25, 50, 75, 100].map((tickValue) => {
-    const angle = Math.PI * (1 - tickValue / 100);
-    const cos = Math.cos(angle);
-    const sin = Math.sin(angle);
-    return {
-      x1: GAUGE.cx + 78 * cos,
-      y1: GAUGE.cy - 78 * sin,
-      x2: GAUGE.cx + 85 * cos,
-      y2: GAUGE.cy - 85 * sin,
-    };
-  });
-
+function StatCard({ label, value, unit, detail, progress }: { label: string; value: number; unit?: string; detail: string; progress?: number }) {
+  const clamped = typeof progress === "number" ? Math.max(0, Math.min(100, progress)) : undefined;
   return (
-    <div className="kch-gauge">
-      <svg viewBox="0 0 180 116" role="img" aria-label={`${label} ${clamped}%`}>
-        <path className="kch-gauge-track" d={`M ${GAUGE.cx - GAUGE.r} ${GAUGE.cy} A ${GAUGE.r} ${GAUGE.r} 0 0 1 ${GAUGE.cx + GAUGE.r} ${GAUGE.cy}`} fill="none" strokeWidth="12" pathLength={100} />
-        <path
-          className="kch-gauge-value"
-          d={`M ${GAUGE.cx - GAUGE.r} ${GAUGE.cy} A ${GAUGE.r} ${GAUGE.r} 0 0 1 ${GAUGE.cx + GAUGE.r} ${GAUGE.cy}`}
-          fill="none"
-          strokeWidth="12"
-          pathLength={100}
-          strokeDasharray={`${Math.max(clamped, 0.6)} ${100 - Math.max(clamped, 0.6)}`}
-        >
-          <title>{`${label}: ${clamped}% — ${hint}`}</title>
-        </path>
-        {ticks.map((tick, index) => (
-          <line key={index} className="kch-gauge-tick" x1={tick.x1} y1={tick.y1} x2={tick.x2} y2={tick.y2} />
-        ))}
-        <text className="kch-gauge-number" x={GAUGE.cx} y={GAUGE.cy - 12} textAnchor="middle">
-          {clamped}
-          <tspan>%</tspan>
-        </text>
-      </svg>
-      <p className="kch-gauge-caption">
-        {label}
-        <br />
-        {hint}
-      </p>
-    </div>
+    <article className="kch-stat">
+      <span className="kch-stat-label">{label}</span>
+      <strong className="kch-stat-value">
+        {value}
+        {unit ? <small>{unit}</small> : null}
+      </strong>
+      {typeof clamped === "number" ? (
+        <div className="kch-stat-bar" role="progressbar" aria-valuenow={clamped} aria-valuemin={0} aria-valuemax={100} aria-label={`${label} ${clamped}%`}>
+          <span style={{ width: `${Math.max(clamped, clamped > 0 ? 1.5 : 0)}%` }} />
+        </div>
+      ) : null}
+      <p className="kch-stat-detail">{detail}</p>
+    </article>
   );
 }
 
@@ -360,10 +337,19 @@ export function AnalyticsCharts({
   metrics,
   gaps,
 }: {
-  metrics: { readinessPercent: number; assessmentCoveragePercent: number; completionRate: number };
+  metrics: {
+    readinessPercent: number;
+    assessmentCoveragePercent: number;
+    completionRate: number;
+    courseCompletions: number;
+    courseAssignments: number;
+    completedAssessments: number;
+    officials: number;
+  };
   gaps: Array<{ domain: string; gaps: number }>;
 }) {
   const maxGaps = Math.max(...gaps.map((item) => item.gaps), 1);
+  const totalGaps = gaps.reduce((sum, item) => sum + item.gaps, 0);
   const gapRows: BarDatum[] = gaps.map((item) => ({
     label: item.domain.replaceAll("_", " "),
     fill: item.gaps,
@@ -375,12 +361,23 @@ export function AnalyticsCharts({
   }));
 
   return (
-    <section className="kch-section" aria-label="Readiness gauges and gaps chart">
+    <section className="kch-section" aria-label="Readiness overview and gaps chart">
       <ChartStyle />
-      <div className="kch-gauges">
-        <Gauge value={metrics.readinessPercent} label="Readiness" hint="supported ≥ required" />
-        <Gauge value={metrics.assessmentCoveragePercent} label="Coverage" hint="supported / total" />
-        <Gauge value={metrics.completionRate} label="Completion" hint="completed / assigned" />
+      <div className="kch-stats">
+        <StatCard label="Readiness" value={metrics.readinessPercent} unit="%" progress={metrics.readinessPercent} detail="of results meet the required level" />
+        <StatCard label="Coverage" value={metrics.assessmentCoveragePercent} unit="%" progress={metrics.assessmentCoveragePercent} detail="of results backed by enough evidence" />
+        <StatCard
+          label="Course completion"
+          value={metrics.completionRate}
+          unit="%"
+          progress={metrics.completionRate}
+          detail={metrics.courseAssignments ? `${metrics.courseCompletions} of ${metrics.courseAssignments} assigned courses` : "No courses assigned yet"}
+        />
+        <StatCard
+          label="Completed assessments"
+          value={metrics.completedAssessments}
+          detail={`${metrics.officials} officials on record · ${totalGaps} open gap${totalGaps === 1 ? "" : "s"}`}
+        />
       </div>
       {gapRows.length ? (
         <div className="kch-panel" style={{ marginTop: 14 }}>
