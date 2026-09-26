@@ -1,8 +1,9 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { FileText, Upload } from "lucide-react";
+import { FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 type CompetencyOption = { id: string; name: string; domain: string; courses: Array<{ id: string; title: string }> };
@@ -78,7 +79,7 @@ export function QuizUploadForm({ competencies }: { competencies: CompetencyOptio
   if (busy) {
     return (
       <section className="surface quiz-generating" aria-busy="true" aria-live="polite">
-        <span className="loading-mark" aria-hidden="true" />
+        <Image className="art quiz-generating-art" src="/illustrations/quiz-upload.webp" alt="" aria-hidden="true" width={748} height={448} sizes="160px" />
         <div>
           <h2>Writing questions from {file?.name}</h2>
           <p className="muted">The model reads the material, writes {questionCount} questions, and each one is checked against the text. This can take up to a minute.</p>
@@ -97,7 +98,7 @@ export function QuizUploadForm({ competencies }: { competencies: CompetencyOptio
         <div className="quiz-form-main">
           <label className={`quiz-drop ${file ? "has-file" : ""}`}>
             <input type="file" accept=".pdf,.txt,.md,application/pdf,text/plain,text/markdown" onChange={(event) => chooseFile(event.target.files?.[0] ?? null)} />
-            {file ? <FileText size={22} strokeWidth={1.6} aria-hidden="true" /> : <Upload size={22} strokeWidth={1.6} aria-hidden="true" />}
+            {file ? <FileText size={22} strokeWidth={1.6} aria-hidden="true" /> : <Image className="art quiz-drop-art" src="/illustrations/quiz-upload.webp" alt="" aria-hidden="true" width={748} height={448} sizes="220px" />}
             <strong>{file ? file.name : "Choose learning material"}</strong>
             <span>{file ? `${(file.size / 1024).toFixed(0)} KB · click to replace` : "PDF, TXT or MD up to 10 MB. Export slides to PDF first."}</span>
           </label>

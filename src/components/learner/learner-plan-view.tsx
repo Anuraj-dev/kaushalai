@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { Building2, Clock, ExternalLink, ListChecks } from "lucide-react";
 import { CatalogGuidePanel } from "@/components/learner/catalog-guide-panel";
@@ -29,9 +30,12 @@ export function HistoryDialog({ history, onClose }: { history: Session["history"
           </button>
         </div>
         {history.length === 0 ? (
-          <p className="history-empty">
-            No prior course evidence. Mark a recommended course complete to start your history.
-          </p>
+          <div className="history-empty-state">
+            <Image className="art history-empty-art" src="/illustrations/history-empty.webp" alt="" aria-hidden="true" width={458} height={333} sizes="150px" />
+            <p className="history-empty">
+              No prior course evidence. Mark a recommended course complete to start your history.
+            </p>
+          </div>
         ) : (
           <div className="kaushal-history-list">
             {history.map((item) => (
@@ -130,13 +134,22 @@ function PlanSummary({ session }: { session: Session }) {
           Full result <span aria-hidden="true">→</span>
         </Link>
       </div>
-      <h2 id="plan-summary-title">
-        {gaps.length === 0 ? "You meet every required level" : `${gaps.length} ${gaps.length === 1 ? "gap" : "gaps"} to close`}
-      </h2>
-      <p className="plan-summary-meta">
-        {supportedCompetencies} of {totalCompetencies} competencies confirmed by evidence
-        {unsupported > 0 ? ` · ${unsupported} need${unsupported === 1 ? "s" : ""} more evidence` : ""}
-      </p>
+      <div className="plan-summary-intro">
+        <div>
+          <h2 id="plan-summary-title">
+            {gaps.length === 0 ? "You meet every required level" : `${gaps.length} ${gaps.length === 1 ? "gap" : "gaps"} to close`}
+          </h2>
+          <p className="plan-summary-meta">
+            {supportedCompetencies} of {totalCompetencies} competencies confirmed by evidence
+            {unsupported > 0 ? ` · ${unsupported} need${unsupported === 1 ? "s" : ""} more evidence` : ""}
+          </p>
+        </div>
+        {gaps.length === 0 ? (
+          <Image className="art plan-summary-art" src="/illustrations/quiz-level-high.webp" alt="" aria-hidden="true" width={343} height={458} loading="eager" sizes="120px" />
+        ) : (
+          <Image className="art plan-summary-art" src="/illustrations/plan-summary.webp" alt="" aria-hidden="true" width={666} height={436} loading="eager" sizes="180px" />
+        )}
+      </div>
       <div className="plan-summary-grid">
         <div>
           <h3 className="plan-summary-label">Gaps by priority</h3>

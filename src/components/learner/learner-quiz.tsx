@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { LOGIN_PATH, PLAN_PATH, clearSession, request, storageKey, type Session } from "@/components/learner/learner-session";
@@ -167,6 +168,7 @@ export function LearnerQuiz({ quizId }: { quizId: string }) {
             {quiz.courseTitle ? ` for ${quiz.courseTitle}` : ""}.
           </p>
         </div>
+        <Image className="art quiz-header-art" src="/illustrations/quiz-intro.webp" alt="" aria-hidden="true" width={790} height={453} loading="eager" sizes="240px" />
       </header>
       {error && <div className="alert" role="alert">{error}</div>}
 
@@ -217,11 +219,14 @@ export function LearnerQuiz({ quizId }: { quizId: string }) {
       {attempt?.status === "completed" && (
         <>
           <section className="surface quiz-panel quiz-result" aria-live="polite">
-            <div className="quiz-score">
-              <strong>
-                {attempt.correct}/{attempt.total}
-              </strong>
-              <span>Level {attempt.level} evidence for {quiz.competencyName}</span>
+            <div className="quiz-result-top">
+              <div className="quiz-score">
+                <strong>
+                  {attempt.correct}/{attempt.total}
+                </strong>
+                <span>Level {attempt.level} evidence for {quiz.competencyName}</span>
+              </div>
+              <LevelArt level={attempt.level ?? 1} />
             </div>
             <LevelBands active={attempt.level ?? undefined} />
             {change ? (
@@ -340,6 +345,14 @@ function QuestionStep({
   );
 }
 
+/** Seedling for levels 1–2, the climb for 3, the summit for 4–5. The level is already stated in text, so the art is decorative. */
+function LevelArt({ level }: { level: number }) {
+  const art = level >= 4 ? { src: "/illustrations/quiz-level-high.webp", width: 343, height: 458 }
+    : level === 3 ? { src: "/illustrations/quiz-level-mid.webp", width: 458, height: 410 }
+      : { src: "/illustrations/quiz-level-low.webp", width: 366, height: 458 };
+  return <Image className="art quiz-level-art" src={art.src} alt="" aria-hidden="true" width={art.width} height={art.height} sizes="140px" />;
+}
+
 function LevelBands({ active }: { active?: number }) {
   return (
     <ol className="quiz-bands" aria-label="Score to level">
@@ -395,16 +408,21 @@ function FocusedCheck({
   if (!check) {
     return (
       <section className="surface quiz-panel quiz-check">
-        <span className="tag">Focused check</span>
-        <h2>Confirm this with three short questions</h2>
-        <p className="muted">
-          A quiz is history evidence, so its weight is capped. Answer three questions on {competencyName} and they count as part of your current
-          assessment.
-        </p>
-        <div className="quiz-actions">
-          <Button variant="dark" onClick={onStart} disabled={busy}>
-            {busy ? "Preparing questions…" : <>Start focused check <span aria-hidden="true">→</span></>}
-          </Button>
+        <div className="quiz-check-intro">
+          <div>
+            <span className="tag">Focused check</span>
+            <h2>Confirm this with three short questions</h2>
+            <p className="muted">
+              A quiz is history evidence, so its weight is capped. Answer three questions on {competencyName} and they count as part of your current
+              assessment.
+            </p>
+            <div className="quiz-actions">
+              <Button variant="dark" onClick={onStart} disabled={busy}>
+                {busy ? "Preparing questions…" : <>Start focused check <span aria-hidden="true">→</span></>}
+              </Button>
+            </div>
+          </div>
+          <Image className="art quiz-check-art" src="/illustrations/focused-check.webp" alt="" aria-hidden="true" width={540} height={406} sizes="200px" />
         </div>
       </section>
     );

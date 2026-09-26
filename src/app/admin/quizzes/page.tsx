@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { generatorLabel } from "@/components/admin/quiz-labels";
@@ -55,6 +56,7 @@ export default function QuizzesPage() {
 
       {quizzes.length === 0 ? (
         <section className="surface quiz-empty">
+          <Image className="art quiz-empty-art" src="/illustrations/quiz-upload.webp" alt="" aria-hidden="true" width={748} height={448} sizes="240px" />
           <h2>No quizzes yet</h2>
           <p className="muted">Start with a PDF of trainer notes or a methodology chapter. You can try the sample trainer note on sampling.</p>
           <Button asChild variant="primary">

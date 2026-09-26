@@ -8,6 +8,9 @@ export default function Home() {
       <h1 id="landing-title">Build the skills your role demands</h1>
       <p className="landing-lede">Kaushal AI helps officials understand their skill gaps and what to learn next</p>
       <div className="landing-actions"><Button asChild variant="primary"><Link href="/learner/login">Continue as an official</Link></Button><Button asChild variant="secondary"><Link href="/admin/login">Continue as administrator</Link></Button></div>
+      <div className="hero-art hero-art-left" aria-hidden="true"><Image src="/illustrations/hero-left.webp" alt="" width={748} height={582} loading="eager" sizes="(max-width: 760px) 240px, 300px" /></div>
+      <div className="hero-art hero-art-right" aria-hidden="true"><Image src="/illustrations/hero-right.webp" alt="" width={415} height={666} loading="eager" sizes="170px" /></div>
+      <div className="hero-trail" aria-hidden="true"><Image src="/illustrations/hero-path.webp" alt="" width={1853} height={218} sizes="(max-width: 760px) 100vw, 1000px" /></div>
     </section>
 
     <section className="workflow-preview workflow-preview-decorated" aria-labelledby="workflow-title">
