@@ -1,7 +1,7 @@
 import { GoogleGenAI, ThinkingLevel, type GenerateContentResponse } from "@google/genai";
 import Groq from "groq-sdk";
 
-import { AiContractError, CATALOG_GUIDE_JSON_SCHEMA, EVALUATION_JSON_SCHEMA, GEMINI_MODEL, GROQ_MODEL, PLATFORM_CHAT_JSON_SCHEMA, QUESTION_JSON_SCHEMA } from "./contracts";
+import { AiContractError, CATALOG_GUIDE_JSON_SCHEMA, EVALUATION_JSON_SCHEMA, GEMINI_MODEL, GROQ_MODEL, PLATFORM_CHAT_JSON_SCHEMA, QUESTION_JSON_SCHEMA, QUIZ_JSON_SCHEMA } from "./contracts";
 import type { AiOperation, AiProviderAdapter, ProviderRequest } from "./service";
 
 type GeminiClient = {
@@ -28,6 +28,7 @@ const OPERATION_METADATA = {
   evaluate_written_answers: { schema: EVALUATION_JSON_SCHEMA, providerSchemaName: "written_evaluations", outputCap: 1_200 },
   explain_catalog_guide: { schema: CATALOG_GUIDE_JSON_SCHEMA, providerSchemaName: "catalog_guide", outputCap: 1_500 },
   platform_chat: { schema: PLATFORM_CHAT_JSON_SCHEMA, providerSchemaName: "platform_chat", outputCap: 1_500 },
+  generate_quiz_questions: { schema: QUIZ_JSON_SCHEMA, providerSchemaName: "quiz_questions", outputCap: 4_000 },
 } as const satisfies Record<AiOperation, { schema: object; providerSchemaName: string; outputCap: number }>;
 
 function metadataFor(request: ProviderRequest) {
@@ -115,7 +116,7 @@ export function createGroqAdapter(options: { apiKey?: string; model?: string; cl
             max_tokens: metadataFor(request).outputCap,
             stream: false,
           },
-          { signal: controller.signal } as Record<string, unknown>,
+          { signal: controller.signal, timeout: request.timeoutMs } as Record<string, unknown>,
         )) as GroqCompletion;
       } finally {
         clearTimeout(timeout);

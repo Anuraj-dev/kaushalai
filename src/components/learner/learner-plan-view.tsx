@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Building2, Clock, ExternalLink } from "lucide-react";
+import Link from "next/link";
+import { Building2, Clock, ExternalLink, ListChecks } from "lucide-react";
 import { CatalogGuidePanel } from "@/components/learner/catalog-guide-panel";
-import type { Recommendation, Session } from "@/components/learner/learner-session";
+import { quizPath, type LearnerQuiz, type Recommendation, type Session } from "@/components/learner/learner-session";
 import { Button } from "@/components/ui/button";
 
 function useEscapeClose(active: boolean, onClose: () => void) {
@@ -37,7 +38,7 @@ export function HistoryDialog({ history, onClose }: { history: Session["history"
               <div className="history-item" key={item.id}>
                 <strong>{item.competencyName}</strong>
                 <span>
-                  {item.courseTitle ?? item.source} · level {item.level}
+                  {item.courseTitle ?? (item.quizTitle ? `Quiz: ${item.quizTitle}` : item.source)} · level {item.level}
                 </span>
               </div>
             ))}
@@ -56,7 +57,7 @@ export function AssessmentResults({ session }: { session: Session }) {
         {session.assessment.provisional && <span className="tag">Provisional</span>}
       </div>
       <h2>{session.assessment.provisional ? "A useful result, with room to confirm" : "Your competency picture"}</h2>
-      <p className="muted">Scores are calculated from your answers. Course completion adds history and does not rewrite this result.</p>
+      <p className="muted">Scores are calculated from your answers and verified quiz results. Marking a course complete adds history but does not change this result.</p>
       <div className="result-list">
         {session.results.map((result) => (
           <div className="result-row" key={result.competencyId}>
@@ -78,6 +79,8 @@ export function LearningPlan({ session, onComplete, onReassess, busy }: { sessio
   const [pending, setPending] = useState<Recommendation | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const isCompleted = (item: Recommendation) => session.history.some((h) => h.courseId === item.courseId);
+  const quizFor = (item: Recommendation) =>
+    session.quizzes.find((quiz) => quiz.courseId === item.courseId) ?? session.quizzes.find((quiz) => !quiz.courseId && quiz.competencyId === item.competencyId);
   useEscapeClose(Boolean(pending), () => {
     if (!busy) setPending(null);
   });
@@ -151,6 +154,7 @@ export function LearningPlan({ session, onComplete, onReassess, busy }: { sessio
                     </div>
                   </a>
                   <div className="course-card-actions">
+                    {quizFor(item) && <QuizButton quiz={quizFor(item)!} />}
                     <Button
                       variant={completed ? "primary" : "secondary"}
                       size="sm"
@@ -167,6 +171,7 @@ export function LearningPlan({ session, onComplete, onReassess, busy }: { sessio
             })}
           </div>
         )}
+        {session.quizzes.length > 0 && <KnowledgeChecks quizzes={session.quizzes} />}
         {session.reassessmentInvited && (
           <div className="alert" style={{ marginTop: 20 }}>
             A course completion is recorded. Reassessment is available when you are ready.
@@ -200,6 +205,45 @@ export function LearningPlan({ session, onComplete, onReassess, busy }: { sessio
         </div>
       )}
     </>
+  );
+}
+
+function QuizButton({ quiz }: { quiz: LearnerQuiz }) {
+  return (
+    <Button asChild variant="secondary" size="sm">
+      <Link href={quizPath(quiz.id)} aria-label={`${quiz.lastAttempt ? "Retake" : "Take"} quiz: ${quiz.title}`}>
+        {quiz.lastAttempt ? `Quiz ${quiz.lastAttempt.correct}/${quiz.lastAttempt.total}` : "Take quiz"} <span aria-hidden="true">→</span>
+      </Link>
+    </Button>
+  );
+}
+
+function KnowledgeChecks({ quizzes }: { quizzes: LearnerQuiz[] }) {
+  return (
+    <section className="knowledge-checks" aria-labelledby="knowledge-checks-title">
+      <div className="plan-heading">
+        <h2 id="knowledge-checks-title">Knowledge checks</h2>
+      </div>
+      <p className="muted">Quizzes written from trainer material. Your score counts as verified evidence and updates your competency result.</p>
+      <div className="quiz-card-list">
+        {quizzes.map((quiz) => (
+          <Link className="quiz-card" href={quizPath(quiz.id)} key={quiz.id}>
+            <span className="quiz-card-icon" aria-hidden="true">
+              <ListChecks size={18} strokeWidth={1.7} />
+            </span>
+            <span className="quiz-card-copy">
+              <strong>{quiz.title}</strong>
+              <small>
+                {quiz.competencyName} · {quiz.questionCount} questions
+              </small>
+            </span>
+            <span className={`tag ${quiz.lastAttempt ? "tag-lime" : ""}`}>
+              {quiz.lastAttempt ? `${quiz.lastAttempt.correct}/${quiz.lastAttempt.total} · level ${quiz.lastAttempt.level}` : "Not taken"}
+            </span>
+          </Link>
+        ))}
+      </div>
+    </section>
   );
 }
 

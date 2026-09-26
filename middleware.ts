@@ -7,7 +7,7 @@ import type { NextRequest } from "next/server";
 // instead of hard-coded 'admin-001' in src/data/admin-repository.ts:55 and route handlers.
 export function middleware(request: NextRequest) {
   const path = request.nextUrl.pathname;
-  const isAdminRoute = path.startsWith("/admin") || path.startsWith("/api/matrices");
+  const isAdminRoute = path.startsWith("/admin") || path.startsWith("/api/matrices") || path.startsWith("/api/quizzes");
   if (!isAdminRoute) return NextResponse.next();
 
   // Demo mode: allow all, but log and expose header for future enforcement
@@ -21,5 +21,5 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/admin", "/admin/:path*", "/api/matrices", "/api/matrices/:path*"],
+  matcher: ["/admin", "/admin/:path*", "/api/matrices", "/api/matrices/:path*", "/api/quizzes", "/api/quizzes/:path*"],
 };

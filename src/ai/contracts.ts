@@ -282,6 +282,91 @@ export const PLATFORM_CHAT_JSON_SCHEMA = {
   required: ["schemaVersion", "answer", "citations", "gapSummary", "courseNotes", "unavailable"],
 } as const;
 
+// --- Quiz generation from uploaded learning material ---
+
+export const QUIZ_MIN_QUESTIONS = 3;
+export const QUIZ_MAX_QUESTIONS = 10;
+
+export const quizQuestionSchema = z.object({
+  prompt: z.string().trim().min(1),
+  options: z.array(z.string().trim().min(1)).length(4),
+  correctIndex: z.number().int().min(0).max(3),
+  explanation: z.string().trim().min(1),
+  sourceQuote: z.string().trim().min(1),
+}).strict();
+
+export const quizQuestionsSchema = z.object({
+  schemaVersion: z.literal(AI_SCHEMA_VERSION),
+  questions: z.array(quizQuestionSchema).min(1).max(12),
+}).strict();
+
+export type QuizQuestion = z.infer<typeof quizQuestionSchema>;
+export type QuizQuestions = z.infer<typeof quizQuestionsSchema>;
+
+export type GenerateQuizRequest = {
+  quizDraftId: string;
+  competencyName: string;
+  requestedCount: number;
+  sourceText: string;
+  fallbackQuestions: QuizQuestion[];
+};
+
+export const QUIZ_JSON_SCHEMA = {
+  type: "object", additionalProperties: false,
+  properties: {
+    schemaVersion: { type: "string", enum: [AI_SCHEMA_VERSION] },
+    questions: { type: "array", minItems: 1, maxItems: 12, items: {
+      type: "object", additionalProperties: false,
+      properties: {
+        prompt: { type: "string", minLength: 1 },
+        options: { type: "array", minItems: 4, maxItems: 4, items: { type: "string", minLength: 1 } },
+        correctIndex: { type: "integer", minimum: 0, maximum: 3 },
+        explanation: { type: "string", minLength: 1 },
+        sourceQuote: { type: "string", minLength: 1 },
+      },
+      required: ["prompt", "options", "correctIndex", "explanation", "sourceQuote"],
+    } },
+  },
+  required: ["schemaVersion", "questions"],
+} as const;
+
+const normalizeForGrounding = (text: string) => text.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+
+/** True when the quote appears in the material, allowing for PDF line breaks and punctuation drift. */
+export function quoteIsGrounded(quote: string, sourceText: string): boolean {
+  const normalizedQuote = normalizeForGrounding(quote);
+  if (!normalizedQuote) return false;
+  const normalizedSource = normalizeForGrounding(sourceText);
+  if (normalizedSource.includes(normalizedQuote)) return true;
+  const sourceWords = new Set(normalizedSource.split(" "));
+  const quoteWords = normalizedQuote.split(" ").filter((word) => word.length >= 4);
+  if (quoteWords.length < 4) return false;
+  return quoteWords.filter((word) => sourceWords.has(word)).length / quoteWords.length >= 0.85;
+}
+
+/**
+ * Drops questions that are malformed or not grounded in the material, then
+ * requires enough survivors. The model never gets to decide what counts as
+ * correct: exactly one stored index is the answer key.
+ */
+export function validateQuizQuestions(value: unknown, request: Pick<GenerateQuizRequest, "requestedCount" | "sourceText">): QuizQuestions {
+  const parsed = quizQuestionsSchema.safeParse(value);
+  if (!parsed.success) throw new AiContractError("schema_error", "Quiz response does not match schema");
+  const prompts = new Set<string>();
+  const kept = parsed.data.questions.filter((question) => {
+    const options = question.options.map(normalizeForGrounding);
+    if (new Set(options).size !== options.length || options.some((option) => !option)) return false;
+    const prompt = normalizeForGrounding(question.prompt);
+    if (prompts.has(prompt)) return false;
+    if (!quoteIsGrounded(question.sourceQuote, request.sourceText)) return false;
+    prompts.add(prompt);
+    return true;
+  });
+  const required = Math.min(QUIZ_MIN_QUESTIONS, request.requestedCount);
+  if (kept.length < required) throw new AiContractError("semantic_error", "Too few quiz questions are grounded in the material");
+  return { schemaVersion: AI_SCHEMA_VERSION, questions: kept.slice(0, request.requestedCount) };
+}
+
 export class AiContractError extends Error {
   constructor(readonly kind: "schema_error" | "semantic_error", message: string) {
     super(message);

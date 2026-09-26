@@ -2,13 +2,18 @@ export type Official = { id: string; name: string; jobRoleName: string; employee
 export type Question = { id: string; competencyId: string; competencyName: string; format: "single_choice" | "short_text"; prompt: string; options: Array<{ id: string; text: string }> };
 export type Result = { competencyId: string; competencyName: string; assessedLevel: number; requiredLevel: number; gap: number; priority: number; confidence: number; supported: boolean; evidence: Array<{ reason: string; source: string }> };
 export type Recommendation = { id: string; courseId: string; competencyId: string; title: string; provider: string | null; duration: string | null; sourceUrl: string; rank: number; rationale: string };
+export type LearnerQuiz = {
+  id: string; title: string; competencyId: string; competencyName: string; courseId: string | null; questionCount: number;
+  lastAttempt: { correct: number; total: number; level: number; completedAt: string } | null;
+};
 export type Session = {
   official: Official;
   matrix: { versionId: string; version: number; competencies: Array<{ competencyId: string; name: string; requiredLevel: number; importance: number }> };
-  history: Array<{ id: string; competencyName: string; source: string; level: number; courseTitle: string | null; courseId: string | null }>;
+  history: Array<{ id: string; competencyName: string; source: string; level: number; courseTitle: string | null; courseId: string | null; quizTitle: string | null }>;
   assessment: { id: string; status: string; currentRound: number | null; roundKind: string | null; questions: Question[]; provisional: boolean };
   results: Result[];
   recommendations: Recommendation[];
+  quizzes: LearnerQuiz[];
   reassessmentInvited: boolean;
   dashboard: { supportedCompetencies: number; totalCompetencies: number; openGaps: number; completedCourses: number };
 };
@@ -18,6 +23,7 @@ export const officialStorageKey = "kaushal-active-official";
 export const PLAN_PATH = "/learner/plan";
 export const ROUNDS_PATH = "/learner";
 export const LOGIN_PATH = "/learner/login";
+export const quizPath = (quizId: string) => `/learner/quiz/${encodeURIComponent(quizId)}`;
 export const PLAN_CRAFT_MS = 1600;
 
 export const request = async (url: string, init?: RequestInit) => {
