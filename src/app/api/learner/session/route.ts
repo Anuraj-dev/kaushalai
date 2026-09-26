@@ -1,13 +1,9 @@
 import { randomUUID } from "node:crypto";
 
-import {
-  createAiAssessmentService,
-  createConfiguredProviderAdapters,
-} from "@/ai";
 import { repositories } from "@/data";
 import { getDatabase, type KaushalDatabase } from "@/db/client";
 import { persistAssessmentSnapshot, restoreAssessmentFromSnapshot } from "@/db/assessment-snapshot-store";
-import { EVIDENCE_RELIABILITY, scoreAssessment, type AssessmentResult, type CompetencyRequirement, type Evidence } from "@/domain/assessment";
+import { EVIDENCE_RELIABILITY, scoreAssessment, type Evidence } from "@/domain/assessment";
 import { ROUND_2_MAX, round1QuestionCount, round2QuestionCount, round3QuestionCount } from "@/domain/assessment/round-limits";
 import {
   baselineQuestions,
@@ -21,7 +17,9 @@ import {
   toStored,
   type RoundPayload,
 } from "@/services/assessment-prefill";
+import { assessmentAi, assessmentEvidence, evaluateAdaptiveAnswers, writeResults, type EvaluatedAnswer } from "@/services/assessment-evidence";
 import { LearningService } from "@/services/learning-service";
+import { QuizService } from "@/services/quiz-service";
 import { z } from "zod";
 
 const ANSWER_LIMIT = 2000;
@@ -35,52 +33,6 @@ type Answer = { questionId: string; value: string };
 
 const database = () => getDatabase();
 const fail = (message: string, status = 400) => Response.json({ error: message }, { status });
-
-function aiService() {
-  const adapters = createConfiguredProviderAdapters();
-  return createAiAssessmentService({ ...adapters, logger: (event) => console.warn(JSON.stringify(event)) });
-}
-
-// Legacy helper kept for reference — now inlined in submitRound for single-txn atomicity (C-AUD-01)
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-async function createAdaptiveRound(db: KaushalDatabase, assessmentId: string, versionId: string, round: 2 | 3, matrix: CompetencyRequirement[]) {
-  const count = round === 2 ? round2QuestionCount(matrix.length) : round3QuestionCount(matrix.length);
-  const fallback = fallbackQuestions(db, matrix, count, round);
-  const priorEvidence = (db.prepare("SELECT competency_id,rationale FROM evidence WHERE assessment_id=? ORDER BY created_at").all(assessmentId) as Row[])
-    .map((row) => ({ competencyId: String(row.competency_id), summary: String(row.rationale ?? "Assessment response") }));
-  const rubricMap = rubrics(db, matrix.map((item) => item.competencyId));
-  const generated = await aiService().generateAdaptiveQuestions({
-    assessmentSessionId: assessmentId, matrixVersionId: versionId, requestedCount: count,
-    competencies: matrix.map((item) => ({ id: item.competencyId, targetLevel: item.requiredLevel, rubric: rubricMap.get(item.competencyId) ?? [] })),
-    priorEvidence, fallbackQuestions: fallback,
-  });
-  const payload: RoundPayload = { kind: round === 2 ? "personalized" : "clarification", questions: toStored(generated.data.questions, matrix) };
-  db.prepare("INSERT INTO assessment_rounds(id,assessment_id,round_number,kind,status) VALUES (?,?,?,?, 'pending')")
-    .run(randomUUID(), assessmentId, round, JSON.stringify(payload));
-}
-
-function assessmentEvidence(db: KaushalDatabase, assessmentId: string): Evidence[] {
-  const assessment = db.prepare("SELECT official_id FROM assessments WHERE id=?").get(assessmentId) as Row | undefined;
-  const current = (db.prepare("SELECT * FROM evidence WHERE assessment_id=? ORDER BY created_at,id").all(assessmentId) as Row[]).map((row) => ({
-    id: String(row.id), competencyId: String(row.competency_id), source: String(row.source_type) as Evidence["source"],
-    demonstratedLevel: Number(row.level), reliability: Number(row.reliability), reason: String(row.rationale ?? "Assessment response"),
-    round: Number(String(row.id).match(/:r([123]):/)?.[1] ?? 1) as 1 | 2 | 3,
-  }));
-  if (!assessment) return current;
-  const history = (db.prepare("SELECT id,competency_id,source_type,level,reliability FROM learning_history WHERE official_id=? ORDER BY recorded_at,id").all(assessment.official_id) as Row[]).map((row) => ({
-    id: `history:${String(row.id)}`, competencyId: String(row.competency_id), source: String(row.source_type) as Evidence["source"],
-    demonstratedLevel: Number(row.level), reliability: Number(row.reliability), reason: "Prior verified learning history", round: null,
-  }));
-  return [...current, ...history];
-}
-
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-function persistResults(db: KaushalDatabase, assessmentId: string, result: AssessmentResult) {
-  db.prepare("DELETE FROM assessment_results WHERE assessment_id=?").run(assessmentId);
-  const insert = db.prepare(`INSERT INTO assessment_results(id,assessment_id,competency_id,assessed_level,required_level,gap,priority,confidence,supported)
-    VALUES (?,?,?,?,?,?,?,?,?)`);
-  for (const item of result.competencies) insert.run(randomUUID(), assessmentId, item.competencyId, item.assessedLevel, item.requiredLevel, item.gap, item.priority, item.confidence, item.supported ? 1 : 0);
-}
 
 export function session(db: KaushalDatabase, assessmentId: string) {
   const assessment = db.prepare(`SELECT a.*,v.version,m.job_role_id FROM assessments a JOIN matrix_versions v ON v.id=a.matrix_version_id
@@ -97,9 +49,10 @@ export function session(db: KaushalDatabase, assessmentId: string) {
     evidence: (db.prepare("SELECT rationale,source_type,reliability FROM evidence WHERE assessment_id=? AND competency_id=? ORDER BY created_at").all(assessmentId, row.competency_id) as Row[])
       .map((entry) => ({ reason: String(entry.rationale ?? "Assessment response"), source: String(entry.source_type), reliability: Number(entry.reliability) })),
   }));
-  const history = (db.prepare(`SELECT h.*,c.name competency_name,co.title course_title,cc.course_id course_id FROM learning_history h JOIN competencies c ON c.id=h.competency_id
-    LEFT JOIN course_completions cc ON cc.id=h.source_id LEFT JOIN courses co ON co.id=cc.course_id WHERE h.official_id=? ORDER BY h.recorded_at DESC`).all(assessment.official_id) as Row[]).map((row) => ({
-    id: String(row.id), competencyName: String(row.competency_name), source: String(row.source_type), level: Number(row.level), reliability: Number(row.reliability), recordedAt: String(row.recorded_at), courseTitle: row.course_title ? String(row.course_title) : null, courseId: row.course_id ? String(row.course_id) : null,
+  const history = (db.prepare(`SELECT h.*,c.name competency_name,co.title course_title,cc.course_id course_id,q.title quiz_title FROM learning_history h JOIN competencies c ON c.id=h.competency_id
+    LEFT JOIN course_completions cc ON cc.id=h.source_id LEFT JOIN courses co ON co.id=cc.course_id LEFT JOIN quizzes q ON q.id=h.source_id
+    WHERE h.official_id=? ORDER BY h.recorded_at DESC`).all(assessment.official_id) as Row[]).map((row) => ({
+    id: String(row.id), competencyName: String(row.competency_name), source: String(row.source_type), level: Number(row.level), reliability: Number(row.reliability), recordedAt: String(row.recorded_at), courseTitle: row.course_title ? String(row.course_title) : null, courseId: row.course_id ? String(row.course_id) : null, quizTitle: row.quiz_title ? String(row.quiz_title) : null,
   }));
   const learning = new LearningService(db);
   let recommendations = learning.getPath(assessmentId) as Row[];
@@ -121,6 +74,7 @@ export function session(db: KaushalDatabase, assessmentId: string) {
     assessment: { id: assessmentId, status: String(assessment.status), startedAt: String(assessment.started_at), currentRound: pending ? Number(pending.round_number) : null, roundKind: payload?.kind ?? null, questions: publicQuestions(payload?.questions ?? []), provisional: String(assessment.status) === "provisional" },
     results,
     recommendations: recommendations.map((row) => ({ id: String(row.id), courseId: String(row.course_id), competencyId: String(row.competency_id), title: String(row.title), provider: row.provider ? String(row.provider) : null, duration: row.duration ? String(row.duration) : null, level: row.level ? String(row.level) : null, sourceUrl: String(row.source_url), rank: Number(row.rank), rationale: String(row.rationale) })),
+    quizzes: new QuizService(db).availableForOfficial(String(assessment.official_id), String(assessment.matrix_version_id)),
     reassessmentInvited: invitations.length > 0 || matrixReassessment,
     dashboard: { supportedCompetencies: results.filter((item) => item.supported).length, totalCompetencies: matrix.length, openGaps: results.filter((item) => item.gap > 0).length, completedCourses },
   };
@@ -139,7 +93,7 @@ async function submitRound(db: KaushalDatabase, assessmentId: string, answers: A
     if (value.length > ANSWER_LIMIT) throw new Error("Answer too long (max 2000 characters)");
   }
   const roundNumber = Number(round.round_number) as 1 | 2 | 3;
-  let evaluated = new Map<string, { level: number; reliability: number; reason: string }>();
+  let evaluated: Map<string, EvaluatedAnswer>;
   if (roundNumber === 1) {
     evaluated = new Map(payload.questions.map((question) => {
       const option = question.options.find((item) => item.id === answerMap.get(question.id));
@@ -147,26 +101,7 @@ async function submitRound(db: KaushalDatabase, assessmentId: string, answers: A
       return [question.id, { level: option.demonstratedLevel, reliability: EVIDENCE_RELIABILITY["fixed-assessment"], reason: `Selected: ${option.text}` }];
     }));
   } else {
-    const deterministic = new Map<string, { level: number; reliability: number; reason: string }>();
-    for (const question of payload.questions) {
-      if (question.format === "single_choice") {
-        const option = question.options.find((item) => item.id === answerMap.get(question.id));
-        if (!option) throw new Error("Answer is not one of the stored choices");
-        // Codex P1: AI-authored choice retains ai-written provenance (0.8), not fixed 1
-        deterministic.set(question.id, { level: option.demonstratedLevel, reliability: EVIDENCE_RELIABILITY["ai-written"], reason: `Selected: ${option.text}` });
-      }
-    }
-    const written = payload.questions.filter((question) => question.format === "short_text");
-    if (written.length > 0) {
-      const result = await aiService().evaluateWrittenAnswers({
-        assessmentSessionId: assessmentId, matrixVersionId: String(assessment.matrix_version_id),
-        answers: written.map((question) => ({ questionId: question.id, competencyId: question.competencyId, answer: answerMap.get(question.id)!, rubric: question.rubric, fallbackDemonstratedLevel: 2 })),
-      });
-      evaluated = new Map(result.data.evaluations.map((item) => [item.questionId, { level: item.demonstratedLevel, reliability: Math.min(0.8, Math.max(0.1, item.confidence ?? 0.6)), reason: item.evidenceSummary }]));
-    } else {
-      evaluated = new Map();
-    }
-    for (const [key, value] of deterministic) evaluated.set(key, value);
+    evaluated = await evaluateAdaptiveAnswers(payload.questions, answerMap, { assessmentSessionId: assessmentId, matrixVersionId: String(assessment.matrix_version_id) });
   }
   const matrix = requirements(db, String(assessment.matrix_version_id));
   // Build new evidence for in-memory scoring before DB write (atomicity C-AUD-01)
@@ -194,7 +129,7 @@ async function submitRound(db: KaushalDatabase, assessmentId: string, answers: A
     const fallback = fallbackQuestions(db, matrix, count, 2);
     const rubricMap = rubrics(db, matrix.map((item) => item.competencyId));
     const priorEvidence = fullEvidence.filter((e) => e.round !== null).map((e) => ({ competencyId: e.competencyId, summary: e.reason }));
-    const generated = await aiService().generateAdaptiveQuestions({
+    const generated = await assessmentAi().generateAdaptiveQuestions({
       assessmentSessionId: assessmentId, matrixVersionId: String(assessment.matrix_version_id), requestedCount: count,
       competencies: matrix.map((item) => ({ id: item.competencyId, targetLevel: item.requiredLevel, rubric: rubricMap.get(item.competencyId) ?? [] })),
       priorEvidence, fallbackQuestions: fallback,
@@ -215,7 +150,7 @@ async function submitRound(db: KaushalDatabase, assessmentId: string, answers: A
     const fallback = fallbackQuestions(db, finalMatrix, count, 3);
     const rubricMap = rubrics(db, finalMatrix.map((item) => item.competencyId));
     const priorEvidence = fullEvidence.filter((e) => e.round !== null).map((e) => ({ competencyId: e.competencyId, summary: e.reason }));
-    const generated = await aiService().generateAdaptiveQuestions({
+    const generated = await assessmentAi().generateAdaptiveQuestions({
       assessmentSessionId: assessmentId, matrixVersionId: String(assessment.matrix_version_id), requestedCount: count,
       competencies: finalMatrix.map((item) => ({ id: item.competencyId, targetLevel: item.requiredLevel, rubric: rubricMap.get(item.competencyId) ?? [] })),
       priorEvidence, fallbackQuestions: fallback,
@@ -234,11 +169,7 @@ async function submitRound(db: KaushalDatabase, assessmentId: string, answers: A
       insertEvidence.run(newEv.id, assessmentId, newEv.competencyId, newEv.source, newEv.demonstratedLevel, newEv.reliability, newEv.reason);
     }
     db.prepare("UPDATE assessment_rounds SET status='completed',updated_at=CURRENT_TIMESTAMP WHERE id=?").run(round.id);
-    db.prepare("DELETE FROM assessment_results WHERE assessment_id=?").run(assessmentId);
-    const insertResult = db.prepare(`INSERT INTO assessment_results(id,assessment_id,competency_id,assessed_level,required_level,gap,priority,confidence,supported) VALUES (?,?,?,?,?,?,?,?,?)`);
-    for (const item of scored.value.competencies) {
-      insertResult.run(randomUUID(), assessmentId, item.competencyId, item.assessedLevel, item.requiredLevel, item.gap, item.priority, item.confidence, item.supported ? 1 : 0);
-    }
+    writeResults(db, assessmentId, scored.value);
     if (nextRoundPayload && nextRoundNumber) {
       db.prepare("INSERT INTO assessment_rounds(id,assessment_id,round_number,kind,status) VALUES (?,?,?,?, 'pending')").run(randomUUID(), assessmentId, nextRoundNumber, JSON.stringify(nextRoundPayload));
     } else {

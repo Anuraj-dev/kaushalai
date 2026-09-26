@@ -1,3 +1,5 @@
+import Image from "next/image";
+
 export function PlanCraftLoader({
   title = "Crafting your personalized learning plan",
   detail = "Scoring your evidence and matching catalog courses to the gaps that remain.",
@@ -8,7 +10,7 @@ export function PlanCraftLoader({
   return (
     <section className="plan-craft" aria-busy="true" aria-live="polite">
       <div className="plan-craft-stage">
-        <span className="transition-spinner" aria-hidden="true" />
+        <Image className="art plan-craft-art" src="/illustrations/plan-craft.webp" alt="" aria-hidden="true" width={540} height={470} loading="eager" sizes="180px" />
         <div className="plan-craft-copy">
           <span className="tag tag-lime">Learning plan</span>
           <h1>{title}</h1>

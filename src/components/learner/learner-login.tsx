@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { ArrowRight, Eye, EyeOff, Pencil } from "lucide-react";
 import {
@@ -162,6 +163,7 @@ export function LearnerLogin() {
           </h1>
           <p>Use your employee code to access your competency assessment. Assessment remains pinned to its starting matrix version.</p>
         </div>
+        <Image className="art login-art" src="/illustrations/learner-login.webp" alt="" aria-hidden="true" width={405} height={540} loading="eager" sizes="200px" />
       </div>
       <form className="login-card" onSubmit={signIn}>
         <div className="login-fields">

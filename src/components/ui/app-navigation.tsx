@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 
@@ -14,6 +14,20 @@ export function AppNavigation() {
   const [officialName, setOfficialName] = useState<string | null>(null);
   const [officialRole, setOfficialRole] = useState<string | null>(null);
   const [adminName, setAdminName] = useState<string | null>(null);
+  const menuRef = useRef<HTMLDetailsElement>(null);
+
+  // Close the compact mobile menu on navigation and on any click outside it.
+  useEffect(() => {
+    menuRef.current?.removeAttribute("open");
+  }, [pathname]);
+  useEffect(() => {
+    const onPointer = (event: PointerEvent) => {
+      const menu = menuRef.current;
+      if (menu?.open && !menu.contains(event.target as Node)) menu.removeAttribute("open");
+    };
+    document.addEventListener("pointerdown", onPointer);
+    return () => document.removeEventListener("pointerdown", onPointer);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -115,6 +129,31 @@ export function AppNavigation() {
     }
   }
 
+  // Show the identity for the area being viewed: both sessions can exist in one browser.
+  const inAdmin = pathname?.startsWith("/admin") ?? false;
+  const inLearner = pathname?.startsWith("/learner") ?? false;
+  const identity =
+    adminName && !inLearner
+      ? { name: adminName, role: "Administrator", links: [{ href: "/admin", label: "Administrator workspace" }] }
+      : officialName && !inAdmin
+        ? {
+            name: officialName,
+            role: officialRole ?? "Official",
+            links: [
+              { href: "/learner/plan", label: "Learning plan" },
+              { href: "/learner/profile", label: "Assessment result" },
+            ],
+          }
+        : null;
+  const initials = identity
+    ? identity.name
+        .split(/\s+/)
+        .filter(Boolean)
+        .slice(0, 2)
+        .map((part) => part[0]!.toUpperCase())
+        .join("")
+    : "";
+
   return (
     <header className="site-nav">
       <Link className="brand" href="/" aria-label="Kaushal AI home">
@@ -125,33 +164,39 @@ export function AppNavigation() {
         </span>
       </Link>
       <div className="nav-actions">
-        {adminName ? (
+        {identity ? (
           <>
-            <Link href="/admin" className="nav-profile" aria-label={`Go to workspace, signed in as ${adminName}`}>
+            <Link href={identity.links[0]!.href} className="nav-profile" aria-label={`Go to workspace, signed in as ${identity.name}, ${identity.role}`}>
               <span className="nav-profile-status" aria-hidden="true" />
               <span>
-                <strong>{adminName}</strong>
-                <small>Administrator</small>
+                <strong>{identity.name}</strong>
+                <small>{identity.role}</small>
               </span>
             </Link>
             <Button className="nav-logout" size="sm" variant="secondary" onClick={logout}>
               Log out
             </Button>
+            <details className="nav-menu" ref={menuRef}>
+              <summary className="nav-menu-trigger" aria-label={`Account menu for ${identity.name}`}>
+                <span className="nav-menu-initials" aria-hidden="true">{initials}</span>
+              </summary>
+              <div className="nav-menu-panel">
+                <div className="nav-menu-identity">
+                  <strong>{identity.name}</strong>
+                  <small>{identity.role}</small>
+                </div>
+                {identity.links.map((link) => (
+                  <Link key={link.href} href={link.href} className="nav-menu-link" aria-current={pathname === link.href ? "page" : undefined}>
+                    {link.label}
+                  </Link>
+                ))}
+                <Button className="nav-menu-logout" size="sm" variant="secondary" onClick={logout}>
+                  Log out
+                </Button>
+              </div>
+            </details>
           </>
-        ) : officialName ? (
-          <>
-            <Link href="/learner/plan" className="nav-profile" aria-label={`Go to ${officialName}'s workspace, ${officialRole ?? "Official"}`}>
-              <span className="nav-profile-status" aria-hidden="true" />
-              <span>
-                <strong>{officialName}</strong>
-                <small>{officialRole ?? "Official"}</small>
-              </span>
-            </Link>
-            <Button className="nav-logout" size="sm" variant="secondary" onClick={logout}>
-              Log out
-            </Button>
-          </>
-        ) : (
+        ) : inAdmin ? null : (
           <Button asChild className="nav-cta" size="sm" variant="primary">
             <Link href="/learner/login">
               Start assessment <span aria-hidden="true">→</span>

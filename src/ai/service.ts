@@ -11,6 +11,7 @@ import {
   type EvaluateWrittenAnswersRequest,
   type GeneratedQuestions,
   type GenerateAdaptiveQuestionsRequest,
+  type GenerateQuizRequest,
   type LearnerQuestion,
   type PlatformChat,
   type PlatformChatRequest,
@@ -18,11 +19,12 @@ import {
   validateCatalogGuideOutput,
   validateGeneratedQuestions,
   validatePlatformChatOutput,
+  validateQuizQuestions,
   validateWrittenEvaluations,
 } from "./contracts";
 
 export type AiProviderName = "gemini" | "groq" | "seeded-fallback";
-export type AiOperation = "generate_adaptive_questions" | "evaluate_written_answers" | "explain_catalog_guide" | "platform_chat";
+export type AiOperation = "generate_adaptive_questions" | "evaluate_written_answers" | "explain_catalog_guide" | "platform_chat" | "generate_quiz_questions";
 
 export type ProviderRequest = {
   operation: AiOperation;
@@ -85,6 +87,10 @@ type Dependencies = {
 };
 
 const timeoutByProvider = { gemini: 8_000, groq: 6_000 } as const;
+// Quiz generation writes several grounded questions from a long excerpt, so it
+// gets a longer budget. It runs while a trainer waits on an upload, not mid-assessment.
+const quizTimeoutByProvider = { gemini: 40_000, groq: 25_000 } as const;
+const QUIZ_DEADLINE_MS = 75_000;
 const retryableByProvider = {
   gemini: new Set([408, 429, 500, 501, 502, 503, 504]),
   groq: new Set([422, 429, 498, 500, 501, 502, 503, 504]),
@@ -139,6 +145,24 @@ function promptForGeneration(request: GenerateAdaptiveQuestionsRequest): string 
     requestedCount: request.requestedCount,
     competencies: request.competencies,
     priorEvidence: request.priorEvidence,
+  });
+}
+
+function promptForQuiz(request: GenerateQuizRequest): string {
+  return JSON.stringify({
+    task: "Write multiple-choice questions that test understanding of the supplied learning material for government statistics officials. Return only schema-valid JSON.",
+    rules: [
+      `Write exactly ${request.requestedCount} questions.`,
+      "Each question has exactly four options and exactly one correct option. correctIndex is the 0-based position of the correct option.",
+      "Use only facts stated in the material. Do not use outside knowledge.",
+      "sourceQuote must be copied word for word from the material, at most 220 characters, and must support the correct answer.",
+      "explanation is one or two sentences saying why the correct option is right, in plain language.",
+      "Distractors must be plausible to a learner but wrong according to the material.",
+      "Test concepts and reasoning. Do not ask about document titles, section numbers, or who wrote the material.",
+      "Spread the correct option across different positions.",
+    ],
+    competency: request.competencyName,
+    material: request.sourceText,
   });
 }
 
@@ -328,9 +352,12 @@ export function createAiAssessmentService(dependencies: Dependencies) {
     prompt: string;
     validate: (data: unknown) => T;
     fallback: () => T;
+    timeouts?: Readonly<Record<AiProviderAdapter["name"], number>>;
+    deadlineMs?: number;
   }): Promise<AiResult<T>> {
     const startedAt = now();
-    const deadline = startedAt + 30_000;
+    const deadline = startedAt + (parameters.deadlineMs ?? 30_000);
+    const providerTimeouts = parameters.timeouts ?? timeoutByProvider;
     const correlationId = makeCorrelationId();
     let totalAttempts = 0;
     let fallbackReason = "providers_exhausted";
@@ -342,7 +369,7 @@ export function createAiAssessmentService(dependencies: Dependencies) {
         const attemptId = `${correlationId}:${provider.name}:${providerAttempt}`;
         const attemptStarted = now();
         try {
-          const timeoutMs = Math.min(timeoutByProvider[provider.name], Math.max(1, deadline - now()));
+          const timeoutMs = Math.min(providerTimeouts[provider.name], Math.max(1, deadline - now()));
           const response = await withAttemptTimeout(
             provider.execute({ operation: parameters.operation, prompt: parameters.prompt, timeoutMs, correlationId, attemptId }),
             timeoutMs,
@@ -429,6 +456,15 @@ export function createAiAssessmentService(dependencies: Dependencies) {
         questionCount: request.ragCourses.length + request.pathCourses.length, prompt: promptForPlatformChat(request),
         validate: (data) => validatePlatformChatOutput(data, effectiveAllowed),
         fallback: () => validatePlatformChatOutput(seededPlatformChat(request), effectiveAllowed),
+      });
+    },
+    async generateQuizQuestions(request: GenerateQuizRequest) {
+      return run({
+        operation: "generate_quiz_questions", assessmentSessionId: request.quizDraftId, matrixVersionId: "quiz",
+        competencyIds: [], questionCount: request.requestedCount, prompt: promptForQuiz(request),
+        validate: (data) => validateQuizQuestions(data, request),
+        fallback: () => validateQuizQuestions({ schemaVersion: AI_SCHEMA_VERSION, questions: request.fallbackQuestions }, request),
+        timeouts: quizTimeoutByProvider, deadlineMs: QUIZ_DEADLINE_MS,
       });
     },
     toLearnerQuestions: (data: GeneratedQuestions): LearnerQuestion[] => toLearnerQuestions(data),
