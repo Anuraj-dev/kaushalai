@@ -3,7 +3,8 @@ import { z } from "zod";
 import { createAiAssessmentService, createConfiguredProviderAdapters } from "@/ai";
 import { getDatabase } from "@/db/client";
 import { restoreAssessmentFromSnapshot } from "@/db/assessment-snapshot-store";
-import { CatalogGuideService } from "@/services/catalog-guide-service";
+import { CatalogGuideService, type CatalogGuideNsstaSource } from "@/services/catalog-guide-service";
+import { fetchUpcomingProgrammes } from "@/services/nssta";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -15,6 +16,14 @@ const bodySchema = z.object({
 
 const fail = (message: string, status = 400) => Response.json({ error: message }, { status });
 
+// Live calendar; the service answers without it when NSSTA is slow or down.
+const nssta: CatalogGuideNsstaSource = {
+  load: async () => {
+    const { calendar, programmes } = await fetchUpcomingProgrammes();
+    return { programmes, calendarUrl: calendar.url };
+  },
+};
+
 export async function POST(request: Request) {
   try {
     const parsed = bodySchema.safeParse(await request.json());
@@ -25,7 +34,7 @@ export async function POST(request: Request) {
     const adapters = createConfiguredProviderAdapters();
     const ai = createAiAssessmentService({ ...adapters, logger: (event) => console.warn(JSON.stringify(event)) });
     // RAG + LLM: chat is last layer, no hardcoded early returns
-    return Response.json(await new CatalogGuideService(db, (payload: Parameters<typeof ai.chat>[0]) => ai.chat(payload)).ask(assessmentId, question));
+    return Response.json(await new CatalogGuideService(db, (payload: Parameters<typeof ai.chat>[0]) => ai.chat(payload), nssta).ask(assessmentId, question));
   } catch (error) {
     console.error("[learner/guide] error", error);
     const message = error instanceof Error ? error.message : "Unable to explain catalog guide";

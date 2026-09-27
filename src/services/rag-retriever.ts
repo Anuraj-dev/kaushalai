@@ -49,6 +49,12 @@ const PLATFORM_KNOWLEDGE: Array<{ title: string; content: string; keywords: stri
     keywords: ["catalog", "igot", "course", "provider", "duration", "level", "statistics", "python", "sql", "r", "gis"],
   },
   {
+    title: "NSSTA In-Person Programmes",
+    content:
+      "NSSTA (National Statistical Systems Training Academy, MoSPI, Greater Noida) runs in-person classroom training programmes for statistical officers, listed in its Advance Training Calendar at nssta.gov.in. Each programme has a topic, dates, duration, venue and eligible participants (some are only for JSOs or SSOs). There is no online registration: seats are by nomination through the official's controlling office. Kaushal shows upcoming NSSTA programmes that match a question or skill gap alongside iGOT courses; they are not part of the iGOT catalog.",
+    keywords: ["nssta", "classroom", "in-person", "person", "offline", "training", "programme", "programmes", "nomination", "calendar", "mospi", "venue"],
+  },
+  {
     title: "Roles and Matrices",
     content:
       "Job roles include Statistical Investigator, Senior Statistical Officer, Survey Design Officer, Data Analyst, Industrial Statistics Analyst, Data Quality Officer, etc. Each matrix defines requiredLevel (1-5) and importance per competency.",

@@ -95,7 +95,7 @@ export function cadreForRole(jobRole: string | null | undefined): NsstaCadre | n
  * NSSTA topics have no competency tags, so each supported competency lists the phrases that
  * identify it in NSSTA topic titles. Competencies absent here have no NSSTA programme.
  */
-const COMPETENCY_TOPIC_PATTERNS: Record<string, RegExp> = {
+export const COMPETENCY_TOPIC_PATTERNS: Record<string, RegExp> = {
   "Basic Statistics": /basic statistics|basic and official statistics|official statistic/i,
   "Survey Design": /survey (design|methodology|techniques)|design(ing)? of (large scale )?sample survey/i,
   Sampling: /sampl(e|ing)|survey methodology/i,
@@ -112,11 +112,14 @@ const COMPETENCY_TOPIC_PATTERNS: Record<string, RegExp> = {
   Ethics: /ethic/i,
 };
 
+/** Whether the cadre can attend a programme; programmes that name JSO/SSO are limited to that cadre. */
+export function openToCadre(participants: string | null, cadre: NsstaCadre | null): boolean {
+  return !cadre || !/\b(JSO|SSO)\b/.test(participants ?? "") || new RegExp(`\\b${cadre}\\b`).test(participants ?? "");
+}
+
 /** Upcoming programmes matching the competency that the official's cadre can attend, soonest first. */
 export function matchProgrammes(programmes: NsstaProgramme[], competencyName: string, cadre: NsstaCadre | null, limit = 3): NsstaProgramme[] {
   const pattern = COMPETENCY_TOPIC_PATTERNS[competencyName];
   if (!pattern) return [];
-  const forCadre = (participants: string | null) =>
-    !cadre || !/\b(JSO|SSO)\b/.test(participants ?? "") || new RegExp(`\\b${cadre}\\b`).test(participants ?? "");
-  return programmes.filter((programme) => pattern.test(programme.topic) && forCadre(programme.participants)).slice(0, limit);
+  return programmes.filter((programme) => pattern.test(programme.topic) && openToCadre(programme.participants, cadre)).slice(0, limit);
 }

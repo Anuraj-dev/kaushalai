@@ -2,6 +2,7 @@ import {
   AI_SCHEMA_VERSION,
   type CatalogGuide,
   type CatalogGuideAiRequest,
+  type CatalogGuideNsstaProgramme,
   type CatalogGuidePathCourse,
   type PlatformChat,
   type PlatformChatRequest,
@@ -9,6 +10,8 @@ import {
   createConfiguredProviderAdapters,
 } from "@/ai";
 import type { KaushalDatabase } from "@/db/client";
+import { NSSTA_SITE_URL, cadreForRole, type NsstaProgramme } from "./nssta";
+import { retrieveNsstaProgrammes } from "./nssta-retriever";
 import { retrieveRagContext } from "./rag-retriever";
 
 type Row = Record<string, unknown>;
@@ -27,14 +30,25 @@ export type CatalogGuideCitedCourse = {
   note: string;
 };
 
+/** An NSSTA programme the answer cites; `sourceUrl` is the published calendar, since seats are by nomination. */
+export type CatalogGuideCitedProgramme = CatalogGuideNsstaProgramme & { sourceUrl: string; note: string };
+
 export type CatalogGuideResponse = {
   schemaVersion: typeof AI_SCHEMA_VERSION;
   answer: string;
   gapSummary: string;
   unavailable: string;
   citedCourses: CatalogGuideCitedCourse[];
+  citedProgrammes: CatalogGuideCitedProgramme[];
   suggestedNext: string[];
 };
+
+/** Upcoming NSSTA programmes and the calendar they come from. May be slow or fail. */
+export type LoadNsstaProgrammes = () => Promise<{ programmes: NsstaProgramme[]; calendarUrl: string }>;
+export type CatalogGuideNsstaSource = { load: LoadNsstaProgrammes; timeoutMs?: number };
+
+// A cold calendar fetch downloads and parses a PDF; the chat answers from iGOT data rather than wait longer.
+const NSSTA_TIMEOUT_MS = 4000;
 
 export type ExplainCatalogGuide = (request: CatalogGuideAiRequest) => Promise<{ data: CatalogGuide }>;
 export type ChatWithRag = (request: PlatformChatRequest) => Promise<{ data: PlatformChat }>;
@@ -170,11 +184,60 @@ function mapCitedCourses(
   return cited;
 }
 
+function mapCitedProgrammes(
+  programmes: CatalogGuideNsstaProgramme[],
+  citations: Array<{ courseId: string; note: string }>,
+  sourceUrl: string,
+): CatalogGuideCitedProgramme[] {
+  const byId = new Map(programmes.map((programme) => [programme.programmeId, programme]));
+  return citations.flatMap((item) => {
+    const programme = byId.get(item.courseId);
+    return programme ? [{ ...programme, sourceUrl, note: item.note }] : [];
+  });
+}
+
+async function withinTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`NSSTA did not respond within ${timeoutMs} ms`)), timeoutMs);
+  });
+  try {
+    return await Promise.race([promise, timeout]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export class CatalogGuideService {
+  /** Without an NSSTA source the guide answers from iGOT data and platform docs only. */
   constructor(
     private readonly database: KaushalDatabase,
     private readonly handler: ChatWithRag | ExplainCatalogGuide = defaultChat(),
+    private readonly nssta?: CatalogGuideNsstaSource,
   ) {}
+
+  /** NSSTA programmes for the question; empty when NSSTA is unconfigured, slow, or down. */
+  private async nsstaContext(assessmentId: string, question: string, results: CatalogGuideAiRequest["results"]) {
+    const none = { programmes: [] as CatalogGuideNsstaProgramme[], sourceUrl: NSSTA_SITE_URL };
+    if (!this.nssta) return none;
+    try {
+      const { programmes, calendarUrl } = await withinTimeout(this.nssta.load(), this.nssta.timeoutMs ?? NSSTA_TIMEOUT_MS);
+      const role = this.database
+        .prepare("SELECT jr.name FROM assessments a JOIN officials o ON o.id=a.official_id JOIN job_roles jr ON jr.id=o.job_role_id WHERE a.id=?")
+        .get(assessmentId) as Row | undefined;
+      const gapCompetencies = results
+        .filter((result) => result.gap > 0)
+        .sort((a, b) => b.priority - a.priority || b.gap - a.gap)
+        .map((result) => result.competencyName);
+      return {
+        programmes: retrieveNsstaProgrammes(programmes, question, { gapCompetencies, cadre: cadreForRole(text(role?.name)) }),
+        sourceUrl: calendarUrl,
+      };
+    } catch (cause) {
+      console.warn(`[learner/guide] answering without NSSTA: ${cause instanceof Error ? cause.message : String(cause)}`);
+      return none;
+    }
+  }
 
   async ask(assessmentId: string, question: string): Promise<CatalogGuideResponse> {
     const trimmed = question.trim();
@@ -194,6 +257,7 @@ export class CatalogGuideService {
     const results = loadResults(this.database, assessmentId);
     const loaded = loadPathCourses(this.database, assessmentId);
     const assessmentStatus = text(assessment.status);
+    const nssta = await this.nsstaContext(assessmentId, trimmed, results);
 
     // RAG retrieval: full catalog + platform docs, always
     const rag = retrieveRagContext(this.database, trimmed, loaded);
@@ -216,6 +280,7 @@ export class CatalogGuideService {
       pathCourses: loaded,
       ragCourses: rag.retrievedCourses,
       platformDocs: rag.platformDocs.map((d) => ({ title: d.title, content: d.content })),
+      nsstaProgrammes: nssta.programmes,
     };
 
     // Support both legacy ExplainCatalogGuide and new ChatWithRag injected via constructor
@@ -247,6 +312,7 @@ export class CatalogGuideService {
     // Prefer citations, fallback to courseNotes for backward compat
     const rawCitations = data.citations?.length ? data.citations : (data.courseNotes ?? []);
     const citedCourses = mapCitedCourses(distinctAll, rawCitations);
+    const citedProgrammes = mapCitedProgrammes(nssta.programmes, rawCitations, nssta.sourceUrl);
 
     return {
       schemaVersion: AI_SCHEMA_VERSION,
@@ -254,6 +320,7 @@ export class CatalogGuideService {
       gapSummary: data.gapSummary?.trim() ? data.gapSummary.trim() : gapSummary,
       unavailable: data.unavailable ?? "",
       citedCourses,
+      citedProgrammes,
       suggestedNext: chips,
     };
   }
