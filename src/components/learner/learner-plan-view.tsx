@@ -5,6 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { Building2, Clock, ExternalLink, ListChecks } from "lucide-react";
 import { CatalogGuidePanel } from "@/components/learner/catalog-guide-panel";
+import { NsstaProgrammesPanel } from "@/components/learner/nssta-programmes-panel";
 import { quizPath, type LearnerQuiz, type Recommendation, type Session } from "@/components/learner/learner-session";
 import { Button } from "@/components/ui/button";
 
@@ -398,6 +399,7 @@ export function LearnerPlanLayout({
   return (
     <>
       <LearningPlan session={session} onComplete={onComplete} onReassess={onReassess} busy={busy} />
+      <NsstaProgrammesPanel competencyNames={rankedGaps(session.results).map((result) => result.competencyName)} jobRole={session.official.jobRoleName} />
       <CatalogGuidePanel
         assessmentId={session.assessment.id}
       />

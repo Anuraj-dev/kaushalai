@@ -1093,3 +1093,17 @@ button:disabled { cursor: not-allowed; }
   .quiz-level-art { height: 92px; }
   .quiz-check-art { display: none; }
 }
+
+.nssta-section { margin-top: 36px; }
+.nssta-section > .muted { margin: 8px 0 0; font-size: 13px; }
+.nssta-status { margin-top: 16px !important; }
+.nssta-group { margin-top: 20px; }
+.nssta-list { display: grid; gap: 10px; margin: 10px 0 0; padding: 0; list-style: none; }
+.nssta-card { display: grid; gap: 6px; padding: 14px 16px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--paper); }
+.nssta-card strong { font-size: 14px; font-weight: 500; }
+.nssta-when { display: inline-flex; align-items: center; gap: 6px; color: var(--ink); font-family: var(--font-mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; }
+.nssta-card small { color: var(--muted); font-family: var(--font-mono); font-size: 10px; }
+.nssta-meta { display: flex; flex-wrap: wrap; gap: 6px 16px; color: var(--muted); font-size: 12px; }
+.nssta-meta > span { display: inline-flex; align-items: center; gap: 5px; }
+.nssta-links { display: flex; flex-wrap: wrap; gap: 8px 20px; margin: 18px 0 0; font-size: 13px; }
+.nssta-links a { display: inline-flex; align-items: center; gap: 5px; }
