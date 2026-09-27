@@ -39,6 +39,9 @@
   --warning: #f3c74f;
   --info: #6fc7df;
   --success: #8bd34f;
+  /* NSSTA (in-person) programmes: a cool blue set against iGOT's lime. */
+  --nssta: #6fc7df;
+  --nssta-wash: #e6f6fb;
   --font-sans: Arial, "Helvetica Neue", Helvetica, sans-serif;
   --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
   --shadow-float: 0 14px 32px rgb(14 14 14 / 14%);
@@ -452,34 +455,36 @@ button:disabled { cursor: not-allowed; }
 .level-legend-fill { background: var(--lime); }
 .level-legend-gap { background: repeating-linear-gradient(45deg, var(--paper) 0 3px, rgb(14 14 14 / 45%) 3px 4px); }
 .level-legend i.level-legend-required { width: 2px; height: 12px; border: 0; background: var(--ink); }
-/* Plan summary: ranked gaps and next steps above the course cards. */
-.plan-summary { margin-bottom: 32px; padding: 24px 28px; }
-.plan-summary-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; }
-.plan-summary-head .text-link { display: inline-flex; min-height: 32px; align-items: center; gap: 6px; }
-.plan-summary h2 { margin: 12px 0 4px; font-size: 24px; letter-spacing: -0.03em; }
-.plan-summary-meta { margin: 0; color: var(--muted); font-size: 13px; }
-.plan-summary-grid { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 20px 40px; margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--line); }
-.plan-summary-label { margin: 0 0 10px; color: var(--muted); font-family: var(--font-mono); font-size: 10px; font-weight: 400; }
+/* Plan summary: sticky sidebar with the ranked gaps beside the plan. */
+.plan-summary { padding: 20px; }
+.plan-summary h2 { margin: 0; font-size: 22px; letter-spacing: -0.03em; }
+.plan-summary-link { display: inline-flex; min-height: 28px; align-items: center; gap: 6px; font-size: 13px; }
+.plan-summary-meta { margin: 6px 0 0; color: var(--muted); font-size: 12px; line-height: 1.45; }
+.plan-summary-label { margin: 0 0 6px; color: var(--muted); font-family: var(--font-mono); font-size: 10px; font-weight: 400; }
+.plan-summary-label span { color: var(--muted-light); }
 .plan-summary-empty { margin: 0; font-size: 13px; }
-.plan-summary-intro { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; }
-.plan-summary-art { flex: 0 0 auto; width: auto; height: 104px; margin: 0 0 -8px; }
+.plan-summary-intro { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; }
+.plan-summary-art { flex: 0 0 auto; width: auto; height: 60px; margin: 0 -4px 0 0; }
+.plan-summary-gaps { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); }
+.evidence-meter { display: flex; gap: 3px; margin-top: 10px; }
+.evidence-meter span { flex: 1; height: 6px; border: 1px solid var(--ink); border-radius: 1px; background: var(--paper); }
+.evidence-meter span.is-confirmed { background: var(--lime); }
+.source-legend { display: flex; flex-wrap: wrap; gap: 8px 16px; margin: 14px 0 0; padding-top: 14px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+.source-legend > span { display: inline-flex; align-items: center; gap: 6px; }
 .history-empty-state { display: grid; justify-items: center; gap: 4px; padding: 18px 0 6px; text-align: center; }
 .history-empty-art { width: 150px; }
 .plan-craft-art { width: 180px; }
 .gap-list { display: grid; margin: 0; padding: 0; list-style: none; }
-.gap-list li { display: grid; grid-template-columns: 22px minmax(0, 1fr) minmax(120px, 1.1fr); gap: 12px; align-items: center; padding: 11px 0; border-top: 1px solid var(--line); }
-.gap-list li:first-child { padding-top: 2px; border-top: 0; }
+.gap-list li { border-top: 1px solid var(--line); }
+.gap-list li:first-child { border-top: 0; }
+.gap-item { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; gap: 5px 10px; align-items: center; width: calc(100% + 16px); margin: 0 -8px; padding: 7px 8px; border: 0; border-radius: var(--radius-xs); background: transparent; color: inherit; text-align: left; }
+.gap-item .gap-name { overflow: hidden; font-size: 13px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.gap-levels { color: var(--muted); font-family: var(--font-mono); font-size: 10px; white-space: nowrap; }
+.gap-item .level-bar { grid-column: 2 / -1; height: 8px; }
+.gap-item:hover { background: var(--canvas); }
+.gap-item[aria-pressed="true"] { background: var(--lime-wash); box-shadow: inset 3px 0 0 var(--ink); }
 .gap-rank { color: var(--muted); font-family: var(--font-mono); font-size: 10px; }
-.gap-name { display: grid; gap: 3px; min-width: 0; }
-.gap-name strong { font-size: 14px; font-weight: 500; }
-.gap-name small { color: var(--muted); font-family: var(--font-mono); font-size: 10px; }
-.next-steps { display: grid; gap: 12px; margin: 0; padding: 0; list-style: none; counter-reset: next-step; }
-.next-steps li { position: relative; min-height: 22px; padding-left: 32px; font-size: 13px; line-height: 1.5; counter-increment: next-step; }
-.next-steps li::before { position: absolute; top: 0; left: 0; display: grid; width: 22px; height: 22px; place-items: center; border: 1px solid var(--ink); border-radius: 50%; background: var(--paper); content: counter(next-step); font-family: var(--font-mono); font-size: 10px; }
-.next-steps li:first-child::before { background: var(--lime); }
-.next-steps strong { font-weight: 600; }
-.next-steps a { color: var(--ink); font-weight: 700; text-underline-offset: 3px; }
-.recommendation-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; margin-top: 20px; }
+.recommendation-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); gap: 14px; margin-top: 20px; }
 .recommendation-section .muted { margin: 0; }
 .course-card { position: relative; display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--paper); }
 .course-card:hover, .course-card:focus-within { border-color: var(--ink); }
@@ -922,13 +927,8 @@ button:disabled { cursor: not-allowed; }
   .section-label .history-open { margin-left: 0; width: 100%; }
   .result-row { grid-template-columns: 1fr; gap: 9px; }
   .recommendation-list { grid-template-columns: 1fr; }
-  .plan-summary { padding: 20px; }
-  .plan-summary h2 { font-size: 22px; }
-  .plan-summary-grid { grid-template-columns: 1fr; }
   .plan-summary-art { display: none; }
   .plan-craft-art { width: 140px; }
-  .gap-list li { grid-template-columns: 22px minmax(0, 1fr); row-gap: 8px; }
-  .gap-list .level-bar { grid-column: 2; }
   .admin-page-header > .tag { margin-top: 18px; }
   .admin-subnav { flex-wrap: nowrap; gap: 16px; margin-bottom: 22px; overflow-x: auto; padding-bottom: 0; }
   .admin-subnav-label, .admin-subnav a { flex: 0 0 auto; min-height: 44px; }
@@ -1092,4 +1092,72 @@ button:disabled { cursor: not-allowed; }
   .quiz-header-art { display: none; }
   .quiz-level-art { height: 92px; }
   .quiz-check-art { display: none; }
+}
+
+
+/* Plan page: learning plan on the left, gaps summary sticky on the right. */
+.plan-shell { max-width: 1240px; }
+.plan-layout { display: grid; grid-template-columns: minmax(0, 1fr) 316px; grid-template-areas: "main aside"; gap: 32px; align-items: start; }
+.plan-main { grid-area: main; min-width: 0; }
+/* body is zoomed 1.25, so viewport units are divided back to fit the aside in the window. */
+.plan-aside { grid-area: aside; position: sticky; top: 20px; max-height: calc(100vh / 1.25 - 40px); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+.plan-heading-note { display: flex; align-items: center; gap: 8px; margin: 6px 0 0; color: var(--muted); font-size: 12px; }
+
+/* Source badges tell iGOT (online) and NSSTA (in person) apart wherever both appear. */
+.source-badge { display: inline-flex; min-height: 20px; align-items: center; padding: 3px 7px; border: 1px solid var(--ink); border-radius: var(--radius-xs); color: var(--ink); font-family: var(--font-mono); font-size: 10px; font-weight: 700; line-height: 1; letter-spacing: 0.04em; }
+.source-badge-igot { background: var(--lime); }
+.source-badge-nssta { background: var(--nssta); }
+.catalog-guide-card .source-badge { justify-self: start; margin-bottom: 2px; }
+.catalog-guide-card.guide-card-nssta { border-color: var(--nssta); background: var(--nssta-wash); }
+.card-badges { display: inline-flex; align-items: center; gap: 8px; }
+.card-rank { color: var(--muted); font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; }
+
+/* Compact plan cards; a selected gap lifts its cards and fades the rest. */
+.plan-main .course-card-head { padding: 14px 16px; }
+.plan-main .course-card-title { font-size: 15px; }
+.plan-main .course-card-body { gap: 10px; padding: 12px 16px 14px; }
+.plan-main .course-card-actions { padding: 0 16px 16px; }
+.course-card.is-related { border-color: var(--ink); box-shadow: var(--shadow-small); }
+.course-card.is-muted { filter: saturate(0) opacity(0.4); }
+
+.nssta-section { margin-top: 40px; }
+.nssta-status { margin-top: 16px !important; font-size: 13px; }
+.nssta-card { border-color: var(--nssta); }
+.nssta-card .course-card-head { border-bottom-color: var(--nssta); background: var(--nssta-wash); }
+.nssta-card-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; padding: 0 16px 16px; }
+.nssta-card-foot small { color: var(--muted); font-size: 11px; }
+.nssta-countdown { display: inline-flex; align-items: center; gap: 7px; color: var(--ink); font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; }
+.nssta-skeleton { display: grid; align-content: start; gap: 12px; min-height: 190px; padding: 16px; border: 1px solid var(--line); border-radius: var(--radius-sm); }
+.nssta-skeleton .skeleton:nth-child(1) { width: 64px; height: 20px; }
+.nssta-skeleton .skeleton:nth-child(2) { height: 38px; }
+.nssta-skeleton .skeleton:nth-child(3) { width: 60%; height: 14px; }
+.nssta-links { display: flex; flex-wrap: wrap; gap: 8px 20px; margin: 18px 0 0; font-size: 13px; }
+.nssta-links a { display: inline-flex; align-items: center; gap: 5px; }
+.live-tag { display: inline-flex; min-height: 24px; align-items: center; gap: 7px; padding: 5px 9px; border: 1px solid var(--line-strong); border-radius: var(--radius-xs); font-family: var(--font-mono); font-size: 10px; }
+.live-dot { position: relative; display: inline-block; width: 7px; height: 7px; flex: 0 0 auto; border-radius: 50%; background: var(--muted-light); }
+.live-tag .live-dot, .nssta-countdown.is-soon .live-dot { background: var(--success); }
+.live-dot::after { position: absolute; inset: 0; border-radius: inherit; background: inherit; content: ""; opacity: 0; }
+
+@keyframes card-rise { from { opacity: 0; translate: 0 18px; } }
+@keyframes item-in { from { opacity: 0; translate: 8px 0; } }
+@keyframes live-ping { from { opacity: 0.7; } to { opacity: 0; transform: scale(2.8); } }
+@media (prefers-reduced-motion: no-preference) {
+  .course-card { transition: transform var(--dur-fast) var(--ease-out), filter var(--dur-base) var(--ease-out), box-shadow var(--dur-base) var(--ease-out); }
+  .gap-item { transition: background-color var(--dur-fast) var(--ease-out); }
+  /* The summary assembles once: gaps slide in rank by rank, evidence segments fill left to right. */
+  .gap-list li { animation: item-in 420ms var(--ease-out) both; animation-delay: calc(var(--i, 0) * 55ms + 120ms); }
+  .evidence-meter span { transform-origin: left center; animation: bar-grow 360ms var(--ease-out) both; animation-delay: calc(var(--i, 0) * 60ms); }
+  .plan-summary-art { animation: art-in 520ms var(--ease-out) both, art-drift 5s ease-in-out 600ms infinite alternate; }
+  .live-tag .live-dot::after, .nssta-countdown.is-soon .live-dot::after { animation: live-ping 1.8s var(--ease-out) infinite; }
+}
+/* Plan and NSSTA cards rise into place as they scroll into view, where the browser supports scroll timelines. */
+@supports (animation-timeline: view()) {
+  @media (prefers-reduced-motion: no-preference) {
+    .plan-main .course-card, .plan-main .quiz-card { animation: card-rise linear both; animation-timeline: view(); animation-range: entry 0% entry 70%; }
+  }
+}
+
+@media (max-width: 1000px) {
+  .plan-layout { grid-template-columns: minmax(0, 1fr); grid-template-areas: "aside" "main"; gap: 28px; }
+  .plan-aside { position: static; max-height: none; overflow: visible; }
 }

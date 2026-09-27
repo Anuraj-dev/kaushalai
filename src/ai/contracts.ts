@@ -150,10 +150,28 @@ export const platformChatSchema = z.object({
 export type PlatformChatCitation = z.infer<typeof platformChatCitationSchema>;
 export type PlatformChat = z.infer<typeof platformChatSchema>;
 
+/**
+ * An upcoming in-person NSSTA programme retrieved for the question. `programmeId` starts with
+ * `nssta:` and is cited through the same `citations[].courseId` field as catalog courses.
+ */
+export type CatalogGuideNsstaProgramme = {
+  programmeId: string;
+  topic: string;
+  section: string;
+  participants: string | null;
+  dates: string | null;
+  startDate: string | null;
+  endDate: string | null;
+  duration: string | null;
+  venue: string | null;
+};
+
 export type PlatformChatRequest = CatalogGuideAiRequest & {
   assessmentStatus: string;
   ragCourses: Array<CatalogGuidePathCourse & { relevanceScore?: number; matchedTerms?: string[] }>;
   platformDocs: Array<{ title: string; content: string }>;
+  /** Absent or empty when NSSTA is unreachable or nothing matches the question. */
+  nsstaProgrammes?: CatalogGuideNsstaProgramme[];
 };
 
 export type CatalogGuidePathCourse = {

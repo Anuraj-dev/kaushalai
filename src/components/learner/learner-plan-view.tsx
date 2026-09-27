@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { Building2, Clock, ExternalLink, ListChecks } from "lucide-react";
 import { CatalogGuidePanel } from "@/components/learner/catalog-guide-panel";
-import { quizPath, type LearnerQuiz, type Recommendation, type Session } from "@/components/learner/learner-session";
+import { NsstaProgrammesPanel } from "@/components/learner/nssta-programmes-panel";
+import { focusClass, quizPath, type LearnerQuiz, type Recommendation, type Session } from "@/components/learner/learner-session";
 import { Button } from "@/components/ui/button";
 
 function useEscapeClose(active: boolean, onClose: () => void) {
@@ -114,82 +115,74 @@ export function AssessmentResults({ session }: { session: Session }) {
   );
 }
 
-function PlanSummary({ session }: { session: Session }) {
+/** Sticky right-hand summary: every open gap, ranked. Selecting one highlights the programmes that close it. */
+function PlanSummary({ session, focus, onFocus }: { session: Session; focus: string | null; onFocus: (competencyName: string | null) => void }) {
   const gaps = rankedGaps(session.results);
   const unsupported = session.results.filter((result) => !result.supported).length;
-  const completedIds = new Set(session.history.map((item) => item.courseId));
-  const nextCourse = session.recommendations.find((item) => !completedIds.has(item.courseId));
-  const nextCourseGap = nextCourse && session.results.find((result) => result.competencyId === nextCourse.competencyId);
-  const quiz = session.quizzes.find((item) => !item.lastAttempt) ?? session.quizzes[0];
   const { supportedCompetencies, totalCompetencies } = session.dashboard;
 
   return (
     <section className="surface plan-summary" aria-labelledby="plan-summary-title">
-      <div className="plan-summary-head">
-        <div className="section-label">
-          <span className="tag tag-lime">Assessment result</span>
-          {session.assessment.provisional && <span className="tag">Provisional</span>}
-        </div>
-        <Link className="text-link" href="/learner/profile">
-          Full result <span aria-hidden="true">→</span>
-        </Link>
+      <div className="section-label">
+        <span className="tag tag-lime">Assessment result</span>
+        {session.assessment.provisional && <span className="tag">Provisional</span>}
       </div>
       <div className="plan-summary-intro">
         <div>
           <h2 id="plan-summary-title">
             {gaps.length === 0 ? "You meet every required level" : `${gaps.length} ${gaps.length === 1 ? "gap" : "gaps"} to close`}
           </h2>
-          <p className="plan-summary-meta">
-            {supportedCompetencies} of {totalCompetencies} competencies confirmed by evidence
-            {unsupported > 0 ? ` · ${unsupported} need${unsupported === 1 ? "s" : ""} more evidence` : ""}
-          </p>
+          <Link className="text-link plan-summary-link" href="/learner/profile">
+            Full result <span aria-hidden="true">→</span>
+          </Link>
         </div>
         {gaps.length === 0 ? (
-          <Image className="art plan-summary-art" src="/illustrations/quiz-level-high.webp" alt="" aria-hidden="true" width={343} height={458} loading="eager" sizes="120px" />
+          <Image className="art plan-summary-art" src="/illustrations/quiz-level-high.webp" alt="" aria-hidden="true" width={343} height={458} loading="eager" sizes="60px" />
         ) : (
-          <Image className="art plan-summary-art" src="/illustrations/plan-summary.webp" alt="" aria-hidden="true" width={666} height={436} loading="eager" sizes="180px" />
+          <Image className="art plan-summary-art" src="/illustrations/plan-summary.webp" alt="" aria-hidden="true" width={666} height={436} loading="eager" sizes="110px" />
         )}
       </div>
-      <div className="plan-summary-grid">
-        <div>
-          <h3 className="plan-summary-label">Gaps by priority</h3>
-          {gaps.length === 0 ? (
-            <p className="muted plan-summary-empty">No open gaps. The courses below keep your strongest areas current.</p>
-          ) : (
-            <ol className="gap-list">
-              {gaps.map((result, index) => (
-                <li key={result.competencyId}>
+      <p className="plan-summary-meta">
+        {supportedCompetencies} of {totalCompetencies} competencies confirmed by evidence
+        {unsupported > 0 ? ` · ${unsupported} need${unsupported === 1 ? "s" : ""} more evidence` : ""}
+      </p>
+      <span className="evidence-meter" role="img" aria-label={`${supportedCompetencies} of ${totalCompetencies} competencies confirmed`}>
+        {Array.from({ length: totalCompetencies }, (_, index) => (
+          <span key={index} className={index < supportedCompetencies ? "is-confirmed" : ""} style={{ "--i": index } as CSSProperties} />
+        ))}
+      </span>
+      <div className="plan-summary-gaps">
+        <h3 className="plan-summary-label">
+          Gaps by priority{gaps.length > 0 && <span> · select to highlight</span>}
+        </h3>
+        {gaps.length === 0 ? (
+          <p className="muted plan-summary-empty">No open gaps. The courses here keep your strongest areas current.</p>
+        ) : (
+          <ol className="gap-list">
+            {gaps.map((result, index) => (
+              <li key={result.competencyId} style={{ "--i": index } as CSSProperties}>
+                <button
+                  type="button"
+                  className="gap-item"
+                  aria-pressed={focus === result.competencyName}
+                  onClick={() => onFocus(focus === result.competencyName ? null : result.competencyName)}
+                >
                   <span className="gap-rank">{String(index + 1).padStart(2, "0")}</span>
-                  <span className="gap-name">
-                    <strong>{result.competencyName}</strong>
-                    <small>
-                      Level {formatLevel(result.assessedLevel)} → {formatLevel(result.requiredLevel)}
-                    </small>
-                  </span>
+                  <strong className="gap-name">{result.competencyName}</strong>
+                  <small className="gap-levels">
+                    {formatLevel(result.assessedLevel)} → {formatLevel(result.requiredLevel)}
+                  </small>
                   <LevelBar assessed={result.assessedLevel} required={result.requiredLevel} label={result.competencyName} />
-                </li>
-              ))}
-            </ol>
-          )}
-        </div>
-        <div>
-          <h3 className="plan-summary-label">What to do next</h3>
-          <ol className="next-steps">
-            {nextCourse && (
-              <li>
-                Start <strong>{nextCourse.title}</strong>
-                {nextCourseGap && nextCourseGap.gap > 0 ? ` to close your ${nextCourseGap.competencyName} gap` : ""}
+                </button>
               </li>
-            )}
-            {quiz && (
-              <li>
-                Take the <Link href={quizPath(quiz.id)}>{quiz.competencyName} knowledge check</Link> to add verified evidence
-              </li>
-            )}
-            <li>{session.reassessmentInvited ? "Reassess when you are ready to update your result" : "Mark courses complete, then reassess to update your result"}</li>
+            ))}
           </ol>
-        </div>
+        )}
       </div>
+      <p className="source-legend">
+        <span><span className="source-badge source-badge-igot">iGOT</span> Online course</span>
+        <span><span className="source-badge source-badge-nssta">NSSTA</span> In person</span>
+      </p>
     </section>
   );
 }
@@ -212,12 +205,25 @@ function courseGapCopy(item: Recommendation, results: Session["results"]) {
   );
 }
 
-export function LearningPlan({ session, onComplete, onReassess, busy }: { session: Session; onComplete: (item: Recommendation) => void; onReassess?: () => void; busy: boolean }) {
+export function LearningPlan({
+  session,
+  onComplete,
+  onReassess,
+  busy,
+  focus = null,
+}: {
+  session: Session;
+  onComplete: (item: Recommendation) => void;
+  onReassess?: () => void;
+  busy: boolean;
+  focus?: string | null;
+}) {
   const [pending, setPending] = useState<Recommendation | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const isCompleted = (item: Recommendation) => session.history.some((h) => h.courseId === item.courseId);
   const quizFor = (item: Recommendation) =>
     session.quizzes.find((quiz) => quiz.courseId === item.courseId) ?? session.quizzes.find((quiz) => !quiz.courseId && quiz.competencyId === item.competencyId);
+  const competencyName = (item: Recommendation) => session.results.find((result) => result.competencyId === item.competencyId)?.competencyName ?? "";
   useEscapeClose(Boolean(pending), () => {
     if (!busy) setPending(null);
   });
@@ -232,10 +238,14 @@ export function LearningPlan({ session, onComplete, onReassess, busy }: { sessio
 
   return (
     <>
-      <PlanSummary session={session} />
       <section className="recommendation-section" aria-labelledby="learning-plan-title">
         <div className="plan-heading">
-          <h2 id="learning-plan-title">Your learning plan</h2>
+          <div>
+            <h2 id="learning-plan-title">Your learning plan</h2>
+            <p className="plan-heading-note">
+              <span className="source-badge source-badge-igot">iGOT</span> Online, self paced
+            </p>
+          </div>
           <div className="plan-actions">
             {session.reassessmentInvited && onReassess && (
               <Button variant="secondary" size="sm" type="button" onClick={onReassess} disabled={busy}>
@@ -251,10 +261,14 @@ export function LearningPlan({ session, onComplete, onReassess, busy }: { sessio
           <p className="muted">No verified course is available for the current gaps.</p>
         ) : (
           <div className="recommendation-list">
-            {session.recommendations.map((item) => {
+            {session.recommendations.map((item, index) => {
               const completed = isCompleted(item);
               return (
-                <article className={`course-card ${completed ? "course-card-done" : ""}`} key={item.id}>
+                <article
+                  className={`course-card course-card-igot ${completed ? "course-card-done" : ""} ${focusClass(focus, [competencyName(item)])}`}
+                  key={item.id}
+                  style={{ "--i": index } as CSSProperties}
+                >
                   <a
                     className="course-card-link"
                     href={item.sourceUrl}
@@ -264,7 +278,10 @@ export function LearningPlan({ session, onComplete, onReassess, busy }: { sessio
                   >
                     <div className="course-card-head">
                       <div className="course-card-top">
-                        <span className="tag tag-dark">Course {String(item.rank).padStart(2, "0")}</span>
+                        <span className="card-badges">
+                          <span className="source-badge source-badge-igot">iGOT</span>
+                          <span className="card-rank">Course {String(item.rank).padStart(2, "0")}</span>
+                        </span>
                         <span className="course-open-icon" aria-hidden="true">
                           <ExternalLink size={17} strokeWidth={1.7} aria-hidden="true" />
                         </span>
@@ -395,12 +412,24 @@ export function LearnerPlanLayout({
   onReassess?: () => void;
   busy: boolean;
 }) {
+  const [focus, setFocus] = useState<string | null>(null);
+  useEscapeClose(Boolean(focus), () => setFocus(null));
   return (
     <>
-      <LearningPlan session={session} onComplete={onComplete} onReassess={onReassess} busy={busy} />
-      <CatalogGuidePanel
-        assessmentId={session.assessment.id}
-      />
+      <div className="plan-layout">
+        <aside className="plan-aside" aria-label="Your gaps">
+          <PlanSummary session={session} focus={focus} onFocus={setFocus} />
+        </aside>
+        <div className="plan-main">
+          <LearningPlan session={session} onComplete={onComplete} onReassess={onReassess} busy={busy} focus={focus} />
+          <NsstaProgrammesPanel
+            competencyNames={rankedGaps(session.results).map((result) => result.competencyName)}
+            jobRole={session.official.jobRoleName}
+            focus={focus}
+          />
+        </div>
+      </div>
+      <CatalogGuidePanel assessmentId={session.assessment.id} />
     </>
   );
 }

@@ -251,6 +251,8 @@ function promptForPlatformChat(request: PlatformChatRequest): string {
       "Write concise, direct, helpful answer. One paragraph or short bullet list.",
       "Never mention search terms or inferred competency domains as course facts unless they appear in RAG context.",
       "Always include schemaVersion, answer, citations, gapSummary, courseNotes, unavailable in JSON. Use empty string/array if no value.",
+      "nsstaProgrammes are upcoming in-person classroom programmes run by NSSTA (National Statistical Systems Training Academy, MoSPI). When one fits the question, mention its topic, dates, duration and venue, and cite it with its programmeId as citations[].courseId (at most 3 programmes, in addition to at most 3 courses).",
+      "NSSTA seats are by nomination through the official's controlling office; there is no online registration link. Say so when recommending an NSSTA programme. Never invent NSSTA programmes, dates or venues; if nsstaProgrammes is empty, do not claim any NSSTA programme exists.",
     ],
     matrixVersionId: request.matrixVersionId,
     assessmentStatus: request.assessmentStatus,
@@ -262,6 +264,7 @@ function promptForPlatformChat(request: PlatformChatRequest): string {
       competencyName: c.competencyName, description: c.description, tags: c.tags, outcomes: c.learningOutcomes, relevanceScore: c.relevanceScore,
     })),
     platformDocs: request.platformDocs,
+    nsstaProgrammes: request.nsstaProgrammes ?? [],
   });
 }
 
@@ -297,6 +300,22 @@ function seededPlatformChat(request: PlatformChatRequest): PlatformChat {
   const hasPath = request.pathCourses.length > 0;
   const gapSummary = gapSummaryFromResults(request.results, request.assessmentStatus);
   const platformQuestion = isPlatformQuestion(request.question);
+  const programmes = (request.nsstaProgrammes ?? []).slice(0, 2);
+  if (programmes.length > 0 && (!platformQuestion || /\bnssta\b/i.test(request.question))) {
+    const courses = request.ragCourses.slice(0, 2);
+    const courseSentence = courses.length > 0 ? ` iGOT courses: ${courses.map((c) => c.title).join(", ")}.` : "";
+    return {
+      schemaVersion: AI_SCHEMA_VERSION,
+      answer: `${gapSummary} Upcoming NSSTA in-person programmes: ${programmes.map((p) => `${p.topic} (${[p.dates, p.venue].filter(Boolean).join(", ")})`).join("; ")}. Seats are by nomination through your controlling office.${courseSentence}`,
+      citations: [
+        ...programmes.map((p) => ({ courseId: p.programmeId, note: `${p.topic} is an upcoming NSSTA programme${p.dates ? ` on ${p.dates}` : ""}.` })),
+        ...courses.map((c) => ({ courseId: c.courseId, note: `${c.title} is relevant for ${c.competencyName || "this question"}.` })),
+      ],
+      gapSummary,
+      courseNotes: [],
+      unavailable: "",
+    };
+  }
   if (hasRag && !platformQuestion) {
     const top = request.ragCourses.slice(0, 2);
     return {
@@ -445,7 +464,11 @@ export function createAiAssessmentService(dependencies: Dependencies) {
     },
     async chat(request: PlatformChatRequest) {
       // Generalized RAG + LLM: LLM is always last layer, no hardcoded early returns
-      const allowedCourseIds = [...request.pathCourses.map((c) => c.courseId), ...request.ragCourses.map((c) => c.courseId)];
+      const allowedCourseIds = [
+        ...request.pathCourses.map((c) => c.courseId),
+        ...request.ragCourses.map((c) => c.courseId),
+        ...(request.nsstaProgrammes ?? []).map((p) => p.programmeId),
+      ];
       // Dedup allowed
       const dedupAllowed = [...new Set(allowedCourseIds)];
       // Ensure at least one allowed for validation edge (empty rag + empty path) -> allow any fallback validation to pass with empty citations

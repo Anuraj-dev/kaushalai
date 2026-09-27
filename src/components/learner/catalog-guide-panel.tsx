@@ -6,7 +6,7 @@ import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 const GREETING = "How can I help you?";
-const DEFAULT_CHIPS = ["How does the assessment work?", "Explain my gaps", "What can Kaushal help with?"];
+const DEFAULT_CHIPS = ["How does the assessment work?", "Explain my gaps", "What can Kaushal help with?", "Upcoming NSSTA programmes for my gaps"];
 
 function guideStorageKey(assessmentId: string) {
   return `kaushal-guide-${assessmentId}`;
@@ -23,11 +23,23 @@ type CitedCourse = {
   note: string;
 };
 
+type CitedProgramme = {
+  programmeId: string;
+  topic: string;
+  participants: string;
+  dates: string;
+  duration: string;
+  venue: string;
+  sourceUrl: string;
+  note: string;
+};
+
 type GuideResponse = {
   answer: string;
   gapSummary: string;
   unavailable: string;
   citedCourses: CitedCourse[];
+  citedProgrammes: CitedProgramme[];
 };
 
 type Exchange = {
@@ -62,6 +74,24 @@ function normalizeCitedCourse(value: unknown): CitedCourse | null {
   };
 }
 
+function normalizeCitedProgramme(value: unknown): CitedProgramme | null {
+  const item = record(value);
+  if (!item) return null;
+  const programmeId = stringValue(item.programmeId).trim();
+  const topic = stringValue(item.topic).trim();
+  if (!programmeId || !topic) return null;
+  return {
+    programmeId,
+    topic,
+    participants: stringValue(item.participants),
+    dates: stringValue(item.dates),
+    duration: stringValue(item.duration),
+    venue: stringValue(item.venue),
+    sourceUrl: stringValue(item.sourceUrl),
+    note: stringValue(item.note),
+  };
+}
+
 function normalizeGuideResponse(value: unknown): GuideResponse | undefined {
   const item = record(value);
   if (!item) return undefined;
@@ -73,6 +103,9 @@ function normalizeGuideResponse(value: unknown): GuideResponse | undefined {
     unavailable: stringValue(item.unavailable),
     citedCourses: Array.isArray(item.citedCourses)
       ? item.citedCourses.map(normalizeCitedCourse).filter((course): course is CitedCourse => course !== null)
+      : [],
+    citedProgrammes: Array.isArray(item.citedProgrammes)
+      ? item.citedProgrammes.map(normalizeCitedProgramme).filter((programme): programme is CitedProgramme => programme !== null)
       : [],
   };
 }
@@ -120,20 +153,33 @@ function guideOverlay() {
 
 function AnswerBody({ answer }: { answer: GuideResponse }) {
   const cited = answer.citedCourses;
+  const programmes = answer.citedProgrammes;
   const unavailable = answer.unavailable.trim();
   const summary = answer.gapSummary.trim();
   const main = answer.answer.trim();
   return <>
     {main ? <div className="catalog-guide-copy"><p>{main}</p></div> : null}
-    {summary && !main && cited.length === 0 && !unavailable ? <p className="catalog-guide-summary">{summary}</p> : null}
+    {summary && !main && cited.length === 0 && programmes.length === 0 && !unavailable ? <p className="catalog-guide-summary">{summary}</p> : null}
     {unavailable ? <p className="catalog-guide-unavailable">{unavailable}</p> : null}
-    {cited.length > 0 ? <div className="catalog-guide-cards">{cited.map((course) => <article className="catalog-guide-card" key={course.courseId}>
-      <strong>{course.title}</strong>
-      <p className="catalog-guide-card-meta">{[course.provider, course.duration, course.competencyName].filter(Boolean).join(" · ")}</p>
-      <p>{course.note}</p>
-      {course.sourceUrl ? <a href={course.sourceUrl} rel="noreferrer" target="_blank">Open course</a> : null}
-    </article>)}</div> : null}
-    {!main && !summary && !unavailable && cited.length === 0 ? <p className="catalog-guide-empty">No explanation is available for that question.</p> : null}
+    {cited.length > 0 || programmes.length > 0 ? <div className="catalog-guide-cards">
+      {programmes.map((programme) => <article className="catalog-guide-card guide-card-nssta" key={programme.programmeId}>
+        <span className="source-badge source-badge-nssta">NSSTA</span>
+        <strong>{programme.topic}</strong>
+        <p className="catalog-guide-card-meta">{[programme.dates, programme.duration, programme.venue].filter(Boolean).join(" · ")}</p>
+        {programme.participants ? <p className="catalog-guide-card-meta">For {programme.participants}</p> : null}
+        {programme.note ? <p>{programme.note}</p> : null}
+        <p className="catalog-guide-card-meta">In person · seats by nomination from your controlling office</p>
+        {programme.sourceUrl ? <a href={programme.sourceUrl} rel="noreferrer" target="_blank">View NSSTA calendar</a> : null}
+      </article>)}
+      {cited.map((course) => <article className="catalog-guide-card" key={course.courseId}>
+        <span className="source-badge source-badge-igot">iGOT</span>
+        <strong>{course.title}</strong>
+        <p className="catalog-guide-card-meta">{[course.provider, course.duration, course.competencyName].filter(Boolean).join(" · ")}</p>
+        <p>{course.note}</p>
+        {course.sourceUrl ? <a href={course.sourceUrl} rel="noreferrer" target="_blank">Open course</a> : null}
+      </article>)}
+    </div> : null}
+    {!main && !summary && !unavailable && cited.length === 0 && programmes.length === 0 ? <p className="catalog-guide-empty">No explanation is available for that question.</p> : null}
   </>;
 }
 
@@ -268,9 +314,9 @@ export function CatalogGuidePanel({ assessmentId }: { assessmentId: string }) {
       const response = await fetch("/api/learner/guide", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ assessmentId, question: trimmed }) });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error ?? "Unable to explain catalog guide");
-      // Server already validates citations against RAG+path context. Show all returned citations.
-      const citedCourses = (body.citedCourses as CitedCourse[] ?? []);
-      const answer = { answer: String(body.answer ?? body.gapSummary ?? ""), gapSummary: String(body.gapSummary ?? ""), unavailable: String(body.unavailable ?? ""), citedCourses };
+      // Server already validates citations against RAG+path+NSSTA context. Show all returned citations.
+      const answer = normalizeGuideResponse(body);
+      if (!answer) throw new Error("Unable to explain catalog guide");
       setExchanges((current) => current.map((item, index) => index === current.length - 1 ? { ...item, answer } : item));
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : "Unable to explain catalog guide";

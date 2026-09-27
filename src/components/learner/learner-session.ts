@@ -24,6 +24,9 @@ export const PLAN_PATH = "/learner/plan";
 export const ROUNDS_PATH = "/learner";
 export const LOGIN_PATH = "/learner/login";
 export const quizPath = (quizId: string) => `/learner/quiz/${encodeURIComponent(quizId)}`;
+/** Plan card emphasis while a gap is selected in the summary: related cards stand out, the rest recede. */
+export const focusClass = (focus: string | null, competencyNames: string[]) =>
+  !focus ? "" : competencyNames.includes(focus) ? "is-related" : "is-muted";
 export const PLAN_CRAFT_MS = 1600;
 
 export const request = async (url: string, init?: RequestInit) => {
