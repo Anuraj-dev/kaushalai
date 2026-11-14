@@ -94,3 +94,7 @@ GEMINI_API_KEY='' GROQ_API_KEY='' DATABASE_URL=file:./data/e2e.db npm run test:e
 - [Product brief](PRODUCT.md): scope, out-of-scope items and product principles.
 - [Design notes](DESIGN.md)
 - [Review reports](docs/reviews/): audit and quality reports from earlier passes.
+
+## License
+
+MIT. See [LICENSE](LICENSE).
